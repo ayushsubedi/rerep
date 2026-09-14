@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReSig — districts</title>
+<style>
+:root {
+  --paper:      #E9E7DE;
+  --paper-2:    #F2F1EA;
+  --grid:       #CFD2C6;
+  --ink:        #1A2321;
+  --ink-soft:   #5A655F;
+  --contour:    #3F6B54;
+  --sindoor:    #B3311F;
+  --gold:       #9A7D22;
+  --mono: ui-monospace, "SF Mono", "IBM Plex Mono", "Roboto Mono", Menlo, monospace;
+  --sans: "Inter", "Helvetica Neue", -apple-system, BlinkMacSystemFont, sans-serif;
+  --rule: 1px solid var(--grid);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: clamp(1rem, 3vw, 2.25rem) clamp(1rem, 3vw, 2.25rem) 4rem;
+  max-width: 72rem; margin-inline: auto;
+  background-color: var(--paper);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px),
+                     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 28px 28px; background-position: -1px -1px;
+  color: var(--ink); font: 15px/1.55 var(--sans);
+}
+a { color: var(--contour); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { color: var(--ink); }
+header.sheet { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; align-items: baseline;
+               justify-content: space-between; border-bottom: 2px solid var(--ink);
+               padding-bottom: 1rem; margin-bottom: 1.25rem; }
+.wordmark { font-family: var(--mono); font-size: clamp(1.2rem, 3.5vw, 1.6rem); font-weight: 600;
+            letter-spacing: -0.03em; margin: 0; }
+nav.pages { font: .8rem var(--mono); display: flex; gap: 1.1rem; }
+nav.pages a[aria-current] { color: var(--ink); border-bottom: 2px solid var(--contour); }
+.sub { color: var(--ink-soft); margin: .3rem 0 0; font-size: .88rem; }
+
+.stats { display: flex; flex-wrap: wrap; gap: 0; margin: 1.25rem 0; border: var(--rule);
+         background: var(--paper-2); }
+.stats > div { flex: 1 1 8rem; padding: .7rem .9rem; border-right: var(--rule); }
+.stats > div:last-child { border-right: none; }
+.stats .n { font: 600 1.3rem/1.1 var(--mono); }
+.stats .k { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); }
+
+.filters { display: flex; flex-wrap: wrap; gap: .7rem 1.1rem; align-items: end;
+           margin: 0 0 1rem; padding: .9rem; border: var(--rule); border-top: 3px solid var(--contour);
+           background: var(--paper-2); }
+.filters label { display: block; font: .68rem var(--mono); text-transform: uppercase;
+                  letter-spacing: .06em; color: var(--ink-soft); margin-bottom: .25rem; }
+.filters select, .filters input { font: .85rem var(--sans); padding: .35rem .5rem;
+                                    border: 1px solid var(--ink-soft); background: var(--paper); color: var(--ink); }
+.filters input[type=search] { min-width: 14rem; }
+#count { font: .8rem var(--mono); color: var(--ink-soft); margin: 0 0 .6rem; }
+
+.parcel { border: var(--rule); border-top: 3px solid var(--contour); margin-bottom: .6rem; background: var(--paper-2); }
+.parcel[data-tier=risk] { border-top-color: var(--sindoor); }
+.parcel[data-tier=ok] { border-top-color: var(--gold); }
+.parcel[data-tier=meh] { border-top-color: var(--ink-soft); }
+.parcel > summary { cursor: pointer; padding: .65rem .9rem; display: grid;
+    grid-template-columns: minmax(0,2.3fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,.9fr) minmax(0,1.6fr);
+    gap: .4rem 1rem; align-items: center; list-style: none; }
+.parcel > summary::-webkit-details-marker { display: none; }
+.parcel[open] > summary { border-bottom: var(--rule); }
+.parcel .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.parcel .where { color: var(--ink-soft); font-size: .78rem; }
+.trend-up { color: var(--sindoor); font-size: .75rem; }
+.trend-down { color: var(--contour); font-size: .75rem; }
+.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); white-space: nowrap; }
+.verdict-good { color: var(--contour); font-weight: 500; }
+.verdict-ok { color: var(--gold); }
+.verdict-meh { color: var(--ink-soft); }
+.verdict-risk { color: var(--sindoor); font-weight: 500; }
+
+.detail { padding: .8rem 1rem 1.1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem 1.5rem; }
+.detail h4 { font: 600 .68rem/1 var(--mono); text-transform: uppercase; letter-spacing: .08em;
+             color: var(--ink-soft); margin: 0 0 .5rem; }
+.detail .kv { margin: 0; display: grid; grid-template-columns: 6rem 1fr; gap: .3rem .6rem; font-size: .84rem; }
+.detail .kv dt { font: .68rem var(--mono); color: var(--ink-soft); }
+.detail .kv dd { margin: 0; font-family: var(--mono); }
+.why { margin: 0; padding: 0; list-style: none; font: .78rem/1.6 var(--mono); }
+.why li { padding: .3rem 0; border-bottom: var(--rule); }
+.why li:last-child { border-bottom: none; }
+.meter { color: var(--contour); letter-spacing: -0.08em; }
+.note { font-size: .8rem; color: var(--ink-soft); margin: .5rem 0 0; }
+@media (max-width: 720px) {
+  .parcel > summary { grid-template-columns: 1fr; }
+  .detail { grid-template-columns: 1fr; }
+}
+footer { margin-top: 2rem; color: var(--ink-soft); font-size: .8rem; border-top: var(--rule); padding-top: 1rem; }
+
+table.districts { width: 100%; border-collapse: collapse; font-size: .85rem; }
+table.districts th, table.districts td { text-align: left; padding: .5rem .7rem; border-bottom: var(--rule); }
+table.districts th { font: .68rem var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); }
+</style>
+</head>
+<body>
+<header class="sheet">
+  <div>
+    <p class="wordmark">ReSig</p>
+    <p class="sub">Generated 2026-09-14 07:04 UTC · aggregated across everything currently tracked.
+      Thin samples move a lot — read the count column before reading the ranking.</p>
+  </div>
+  <nav class="pages"><a href="index.html">Report</a><a href="map.html">Map</a><a href="districts.html" aria-current="page">Districts</a></nav>
+</header>
+
+<table class="districts">
+<thead><tr>
+  <th>District</th><th>Parcels</th><th>Median rate</th><th>Mean score</th><th>Best</th><th>Distribution</th>
+</tr></thead>
+<tbody>
+<tr><td>Dhading</td><td class='num'>3</td><td class='num'>Rs 6,192/m²</td><td class='num'>+0.226</td><td class='num'>+0.248</td><td><span class='meter'>█████·················</span></td></tr><tr><td>Chitwan</td><td class='num'>1</td><td class='num'>Rs 16,242/m²</td><td class='num'>+0.174</td><td class='num'>+0.174</td><td><span class='meter'>████··················</span></td></tr><tr><td>Lalitpur</td><td class='num'>37</td><td class='num'>Rs 128,951/m²</td><td class='num'>+0.129</td><td class='num'>+0.236</td><td><span class='meter'>███···················</span></td></tr><tr><td>Kathmandu</td><td class='num'>126</td><td class='num'>Rs 135,241/m²</td><td class='num'>+0.126</td><td class='num'>+0.251</td><td><span class='meter'>███···················</span></td></tr><tr><td>Rupandehi</td><td class='num'>1</td><td class='num'>Rs 8,859/m²</td><td class='num'>+0.119</td><td class='num'>+0.119</td><td><span class='meter'>███···················</span></td></tr><tr><td>Sunsari</td><td class='num'>1</td><td class='num'>—</td><td class='num'>+0.109</td><td class='num'>+0.109</td><td><span class='meter'>██····················</span></td></tr><tr><td>Bhaktapur</td><td class='num'>12</td><td class='num'>Rs 92,782/m²</td><td class='num'>+0.075</td><td class='num'>+0.141</td><td><span class='meter'>██····················</span></td></tr><tr><td>Kaski</td><td class='num'>6</td><td class='num'>Rs 86,492/m²</td><td class='num'>+0.057</td><td class='num'>+0.140</td><td><span class='meter'>█·····················</span></td></tr><tr><td>Morang</td><td class='num'>1</td><td class='num'>Rs 2,067/m²</td><td class='num'>+0.012</td><td class='num'>+0.012</td><td><span class='meter'>······················</span></td></tr>
+</tbody>
+</table>
+
+<footer>
+  Generated automatically by <a href="https://github.com/ayushsubedi/resig">ReSig</a>.
+</footer>
+</body>
+</html>
