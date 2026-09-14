@@ -61,9 +61,12 @@ nav.pages a[aria-current] { color: var(--ink); border-bottom: 2px solid var(--co
 .parcel[data-tier=risk] { border-top-color: var(--sindoor); }
 .parcel[data-tier=ok] { border-top-color: var(--gold); }
 .parcel[data-tier=meh] { border-top-color: var(--ink-soft); }
-.parcel > summary { cursor: pointer; padding: .65rem .9rem; display: grid;
-    grid-template-columns: minmax(0,2.3fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,.9fr) minmax(0,1.6fr);
+.parcel > summary, .parcel-head { cursor: pointer; padding: .65rem .9rem; display: grid;
+    grid-template-columns: minmax(0,2.1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,.9fr) minmax(0,.8fr) minmax(0,1.5fr);
     gap: .4rem 1rem; align-items: center; list-style: none; }
+.parcel-head { cursor: default; font: .68rem var(--mono); text-transform: uppercase;
+    letter-spacing: .06em; color: var(--ink-soft); padding-bottom: .35rem; }
+.parcel-head span.num { text-align: right; }
 .parcel > summary::-webkit-details-marker { display: none; }
 .parcel[open] > summary { border-bottom: var(--rule); }
 .parcel .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -90,6 +93,7 @@ nav.pages a[aria-current] { color: var(--ink); border-bottom: 2px solid var(--co
 @media (max-width: 720px) {
   .parcel > summary { grid-template-columns: 1fr; }
   .detail { grid-template-columns: 1fr; }
+  .parcel-head { display: none; }
 }
 footer { margin-top: 2rem; color: var(--ink-soft); font-size: .8rem; border-top: var(--rule); padding-top: 1rem; }
 
@@ -102,7 +106,7 @@ table.districts th { font: .68rem var(--mono); text-transform: uppercase; letter
 <header class="sheet">
   <div>
     <p class="wordmark">ReSig</p>
-    <p class="sub">Generated 2026-09-14 07:04 UTC · aggregated across everything currently tracked.
+    <p class="sub">Generated 2026-09-14 07:22 UTC · aggregated across everything currently tracked.
       Thin samples move a lot — read the count column before reading the ranking.</p>
   </div>
   <nav class="pages"><a href="index.html">Report</a><a href="map.html">Map</a><a href="districts.html" aria-current="page">Districts</a></nav>
