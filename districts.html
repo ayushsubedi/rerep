@@ -57,6 +57,36 @@ nav.pages a[aria-current] { color: var(--ink); border-bottom: 2px solid var(--co
 .filters input[type=search] { min-width: 14rem; }
 #count { font: .8rem var(--mono); color: var(--ink-soft); margin: 0 0 .6rem; }
 
+.reweight { border: var(--rule); border-top: 3px solid var(--contour); background: var(--paper-2);
+            margin: 0 0 1rem; padding: 0 .9rem; }
+.reweight summary { cursor: pointer; font: 600 .74rem var(--mono); text-transform: uppercase;
+                     letter-spacing: .06em; color: var(--ink-soft); padding: .6rem 0; }
+.reweight-body { padding: 0 0 .9rem; }
+.reweight-presets { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .9rem; }
+.btn { font: 600 .72rem var(--mono); padding: .35rem .8rem; cursor: pointer; border-radius: 0;
+       background: var(--ink); color: var(--paper-2); border: 1px solid var(--ink); }
+.btn:hover { background: var(--contour); border-color: var(--contour); }
+.btn--ghost { background: transparent; color: var(--ink); }
+.btn--ghost:hover { color: var(--paper-2); }
+.reweight-sliders { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+                     gap: .7rem 1.3rem; }
+.reweight-row label { display: flex; justify-content: space-between; gap: .5rem; font: .7rem var(--mono);
+                       color: var(--ink-soft); margin-bottom: .25rem; cursor: help; }
+.reweight-row input[type=range] { width: 100%; accent-color: var(--contour); }
+
+#compare-bar { position: sticky; bottom: 0; background: var(--ink); color: var(--paper-2);
+               padding: .55rem 1rem; display: none; justify-content: space-between; align-items: center;
+               gap: 1rem; font: .78rem var(--mono); z-index: 5; margin-top: 1rem; }
+#compare-bar.show { display: flex; }
+#compare-bar button { font: 600 .72rem var(--mono); padding: .35rem .8rem; cursor: pointer;
+                       background: var(--paper-2); color: var(--ink); border: none; }
+#compare-panel { border: var(--rule); border-top: 3px solid var(--gold); background: var(--paper-2);
+                  margin: 1rem 0; padding: 1rem; overflow-x: auto; }
+#compare-panel table { border-collapse: collapse; width: 100%; font-size: .82rem; }
+#compare-panel th, #compare-panel td { padding: .4rem .7rem; border-bottom: var(--rule);
+                                        text-align: left; white-space: nowrap; }
+.cmp-check { margin-right: .5rem; vertical-align: middle; }
+
 .parcel { border: var(--rule); border-top: 3px solid var(--contour); margin-bottom: .6rem; background: var(--paper-2); }
 .parcel[data-tier=risk] { border-top-color: var(--sindoor); }
 .parcel[data-tier=ok] { border-top-color: var(--gold); }
@@ -79,8 +109,10 @@ nav.pages a[aria-current] { color: var(--ink); border-bottom: 2px solid var(--co
 .verdict-meh { color: var(--ink-soft); }
 .verdict-risk { color: var(--sindoor); font-weight: 500; }
 .tag { display: inline-block; font: 600 .65rem var(--mono); text-transform: uppercase;
-       letter-spacing: .04em; padding: .1rem .4rem; border-radius: 3px; vertical-align: middle; }
+       letter-spacing: .04em; padding: .1rem .4rem; border-radius: 3px; vertical-align: middle;
+       cursor: help; }
 .tag--gold { border: 1px solid var(--gold); color: var(--gold); }
+.tag--warn { border: 1px solid var(--sindoor); color: var(--sindoor); }
 
 .detail { padding: .8rem 1rem 1.1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem 1.5rem; }
 .detail h4 { font: 600 .68rem/1 var(--mono); text-transform: uppercase; letter-spacing: .08em;
@@ -91,6 +123,7 @@ nav.pages a[aria-current] { color: var(--ink); border-bottom: 2px solid var(--co
 .why { margin: 0; padding: 0; list-style: none; font: .78rem/1.6 var(--mono); }
 .why li { padding: .3rem 0; border-bottom: var(--rule); }
 .why li:last-child { border-bottom: none; }
+.why li span[title] { border-bottom: 1px dotted var(--ink-soft); cursor: help; }
 .meter { color: var(--contour); letter-spacing: -0.08em; }
 .note { font-size: .8rem; color: var(--ink-soft); margin: .5rem 0 0; }
 @media (max-width: 720px) {
@@ -109,7 +142,7 @@ table.districts th { font: .68rem var(--mono); text-transform: uppercase; letter
 <header class="sheet">
   <div>
     <p class="wordmark">ReSig</p>
-    <p class="sub">Generated 2026-09-21 06:33 UTC · aggregated across everything currently tracked.
+    <p class="sub">Generated 2026-09-21 11:34 UTC · aggregated across everything currently tracked.
       Thin samples move a lot — read the count column before reading the ranking.</p>
   </div>
   <nav class="pages"><a href="index.html">Report</a><a href="map.html">Map</a><a href="districts.html" aria-current="page">Districts</a><a href="best-of-both.html">Best of Both</a></nav>
