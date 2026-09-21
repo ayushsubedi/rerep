@@ -78,6 +78,9 @@ nav.pages a[aria-current] { color: var(--ink); border-bottom: 2px solid var(--co
 .verdict-ok { color: var(--gold); }
 .verdict-meh { color: var(--ink-soft); }
 .verdict-risk { color: var(--sindoor); font-weight: 500; }
+.tag { display: inline-block; font: 600 .65rem var(--mono); text-transform: uppercase;
+       letter-spacing: .04em; padding: .1rem .4rem; border-radius: 3px; vertical-align: middle; }
+.tag--gold { border: 1px solid var(--gold); color: var(--gold); }
 
 .detail { padding: .8rem 1rem 1.1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem 1.5rem; }
 .detail h4 { font: 600 .68rem/1 var(--mono); text-transform: uppercase; letter-spacing: .08em;
@@ -106,10 +109,10 @@ table.districts th { font: .68rem var(--mono); text-transform: uppercase; letter
 <header class="sheet">
   <div>
     <p class="wordmark">ReSig</p>
-    <p class="sub">Generated 2026-09-21 03:12 UTC · aggregated across everything currently tracked.
+    <p class="sub">Generated 2026-09-21 06:19 UTC · aggregated across everything currently tracked.
       Thin samples move a lot — read the count column before reading the ranking.</p>
   </div>
-  <nav class="pages"><a href="index.html">Report</a><a href="map.html">Map</a><a href="districts.html" aria-current="page">Districts</a></nav>
+  <nav class="pages"><a href="index.html">Report</a><a href="map.html">Map</a><a href="districts.html" aria-current="page">Districts</a><a href="best-of-both.html">Best of Both</a></nav>
 </header>
 
 <table class="districts">
