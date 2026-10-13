@@ -158,3 +158,14 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; } th, td { text
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } .card:hover, .card.hot { transform: none; } }
 @media (forced-colors: active) { .btn, .chip, .card { border: 1px solid CanvasText; } }
+
+.hist { margin: 0 0 12px; padding: 8px 10px 4px; border: 1px solid var(--line-ui); background: rgba(26,16,60,.6); }
+.hist svg { width: 100%; height: 64px; display: block; cursor: pointer; }
+.hist rect { fill: #5d4a99; } .hist rect.in { fill: var(--cyan); } .hist rect:hover { fill: var(--magenta); }
+.hist line { stroke: var(--orange); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.hist figcaption { margin: 2px 0 0; border: 0; padding: 0; }
+
+.cl { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font: 700 13px var(--font-head); color: #fff;
+  background: rgba(9,0,20,.88); border: 2px solid #b48cff; box-shadow: 0 0 12px rgba(180,140,255,.7); cursor: pointer; transition: transform var(--ease); }
+.cl:hover { transform: scale(1.12); border-color: var(--cyan); box-shadow: 0 0 18px var(--cyan); }
+.leaflet-popup-content .btn { display: block; min-height: 36px; padding: 2px 8px; text-align: left; }

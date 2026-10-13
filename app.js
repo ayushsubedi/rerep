@@ -15,6 +15,22 @@
   const byId = new Map(D.listings.map((l) => [l.id, l]));
   let visible = [], map = null, layerL = null, layerC = null, layerB = null, markers = new Map(), canvas = null;
 
+  // ---------- detail shards: X-Ray text and price history load on demand (d/<first id char>.js) ----------
+  const DETAIL = {}, shardP = {};
+  window.JAGGA_DETAIL_LOAD = (k, obj) => { Object.assign(DETAIL, obj); if (shardP[k]) shardP[k].res(); };
+  function loadDetail(ids) {
+    return Promise.all([...new Set(ids.map((i) => i[0]))].map((k) => {
+      if (shardP[k]) return shardP[k].p;
+      let res, rej; const p = new Promise((a, b) => { res = a; rej = b; });
+      shardP[k] = { p, res };
+      const sc = document.createElement("script"); sc.src = "d/" + k + ".js";
+      sc.onerror = () => { delete shardP[k]; rej(new Error("could not load listing details")); };
+      document.head.appendChild(sc);
+      return p;
+    }));
+  }
+  const detailOf = (id) => DETAIL[id] || { x: { ok: [], no: [] }, h: [] };
+
   // ---------- helpers ----------
   const UNIT_LABEL = { aana: "aana", ropani: "ropani", kattha: "kattha", dhur: "dhur", bigha: "bigha", sqft: "sq ft", sqm: "m²" };
   const pctColor = (c) => (!c ? "#7a7391" : c.p < 25 ? "#00ffff" : c.p > 75 ? "#ff00ff" : "#b48cff");
@@ -59,6 +75,7 @@
     const c = l.c, tags = [];
     if (c) tags.push('<span class="tag ' + (c.p < 25 ? "cheap" : c.p > 75 ? "dear" : "") + '"><i>' + L.esc(L.compsLabel(c)) + "</i></span>");
     if (c && c.rel === "weak") tags.push('<span class="tag weak" title="Compared with the whole district: locations differ"><i>weak comps</i></span>');
+    if (l.pc === "low") tags.push('<span class="tag weak" title="Low confidence: see the X-Ray for why"><i>price uncertain</i></span>');
     if (l.pb === "total_reread") tags.push('<span class="tag weak" title="The ad put a total price in the per-unit field; it has been read as a total"><i>read as total</i></span>');
     if (L.isCut(l)) tags.push('<span class="tag cut"><i>price cut</i></span>');
     if (isNew(l)) tags.push('<span class="tag new"><i>new</i></span>');
@@ -77,8 +94,23 @@
       '<span class="dim">' + L.esc(l.src) + (l.fs ? " · seen " + ago(l.fs) : "") + "</span></div>" +
       (tags.length ? '<div class="tags">' + tags.join("") + "</div>" : "") + "</li>";
   }
+  // ---------- price histogram: the distribution under every filter EXCEPT price, so you can see where a budget sits ----------
+  function renderHist() {
+    const f = Object.assign({}, S.f, { pmin: "", pmax: "", bounds: null });
+    const vals = L.filter(D.listings, f, T).map((l) => L.perUnit(l.p, S.f.unit, T));
+    const h = L.histogram(vals, 24), fig = $("hist");
+    if (!h) { fig.hidden = true; return; }
+    fig.hidden = false;
+    const lo = S.f.pmin ? +S.f.pmin : 0, hi = S.f.pmax ? +S.f.pmax : Infinity, max = Math.max.apply(null, h.counts), W = 400 / h.counts.length;
+    $("histSvg").innerHTML = h.counts.map((c, i) => '<rect class="' + (h.edges[i + 1] > lo && h.edges[i] < hi ? "in" : "") + '" data-lo="' + h.edges[i] + '" data-hi="' + h.edges[i + 1] +
+      '" x="' + (i * W + 0.5) + '" width="' + (W - 1) + '" y="' + (62 - (c / max) * 58) + '" height="' + (c / max) * 58 + '"><title>' + c + " listing(s): " + L.esc(L.fmtMoney(h.edges[i])) + " – " + L.esc(L.fmtMoney(h.edges[i + 1])) + "</title></rect>").join("") +
+      '<line x1="' + (((Math.log(h.median) - Math.log(h.min)) / ((Math.log(h.max) - Math.log(h.min)) || 1)) * 400) + '" x2="' + (((Math.log(h.median) - Math.log(h.min)) / ((Math.log(h.max) - Math.log(h.min)) || 1)) * 400) + '" y1="0" y2="64"></line>';
+    $("histSvg").setAttribute("aria-label", "Price distribution per " + UNIT_LABEL[S.f.unit] + ": " + vals.length + " listings, median " + L.fmtMoney(h.median) + ", from " + L.fmtMoney(h.min) + " to " + L.fmtMoney(h.max));
+    $("histCap").textContent = "Per " + UNIT_LABEL[S.f.unit] + ": median " + L.fmtMoney(h.median) + " · range " + L.fmtMoney(h.min) + " – " + L.fmtMoney(h.max) + " · click a bar to filter to it";
+  }
+
   function renderList() {
-    compute();
+    compute(); renderHist();
     $("resultsHead").textContent = visible.length + (visible.length === 1 ? " listing" : " listings");
     const shown = visible.slice(0, S.shown);
     $("results").innerHTML = shown.length ? shown.map(cardHTML).join("") :
@@ -107,22 +139,52 @@
       if (c.path) window.L.polyline(c.path, { color: "#ff9900", weight: 3, dashArray: "6 6" }).bindPopup(tip).addTo(layerC);
       window.L.circle([c.lat, c.lon], { radius: (c.radius_km || 0) * 1000, color: "#ff9900", weight: 1, fillOpacity: 0.06 }).bindPopup(tip).addTo(layerC);
     });
+    window.JAGGA_MAP = map; map.on("zoomend", drawMarkers);
     map.on("moveend", () => { const b = map.getBounds(); S.bounds = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()]; if ($("fMapOnly").checked && !S.fitNext) { S.shown = PAGE; renderList(); } S.fitNext = false; });
+  }
+  // ---------- map: distance clustering, recomputed on zoom (no library) ----------
+  const CELL = 56;                                   // px: listings closer than this on screen merge into one numbered circle
+  function drawMarkers() {
+    if (!map) return;
+    layerL.clearLayers(); markers = new Map();
+    const zoom = map.getZoom(), cells = new Map();
+    visible.forEach((l) => {
+      if (l.lat == null) return;
+      const p = map.project([l.lat, l.lon], zoom), k = Math.floor(p.x / CELL) + ":" + Math.floor(p.y / CELL);
+      if (!cells.has(k)) cells.set(k, []);
+      cells.get(k).push(l);
+    });
+    cells.forEach((g) => {
+      if (g.length === 1) {
+        const l = g[0];
+        const m = window.L.circleMarker([l.lat, l.lon], { renderer: canvas, radius: 6, color: "#000", weight: 1, fillColor: pctColor(l.c), fillOpacity: 0.92 });
+        m.on("click", () => openDrawer(l.id, true));
+        m.on("mouseover", () => hot(l.id, true)); m.on("mouseout", () => hot(l.id, false));
+        m.bindTooltip(L.esc(priceText(l)) + "/" + UNIT_LABEL[S.f.unit] + (l.prec && l.prec !== "exact" ? " (approx. location)" : ""), { direction: "top" });
+        m.addTo(layerL); markers.set(l.id, m);
+        return;
+      }
+      const lat = g.reduce((a, l) => a + l.lat, 0) / g.length, lon = g.reduce((a, l) => a + l.lon, 0) / g.length;
+      const ps = g.map((l) => l.p).filter((x) => x != null).sort((a, b) => a - b);
+      const lo = ps[0], hi = ps[ps.length - 1];
+      const icon = window.L.divIcon({ className: "", iconSize: [36, 36], html: '<div class="cl" role="img" aria-label="' + g.length + ' listings">' + g.length + "</div>" });
+      const m = window.L.marker([lat, lon], { icon: icon, keyboard: false });
+      m.bindTooltip(g.length + " listings" + (ps.length ? ": " + L.esc(L.fmtMoney(L.perUnit(lo, S.f.unit, T))) + " – " + L.esc(L.fmtMoney(L.perUnit(hi, S.f.unit, T))) + "/" + UNIT_LABEL[S.f.unit] : ""), { direction: "top" });
+      m.on("click", () => {
+        const b = window.L.latLngBounds(g.map((l) => [l.lat, l.lon]));
+        if (b.getNorthEast().equals(b.getSouthWest()) || map.getZoom() >= 17) {          // same point (a locality centroid): list them instead of zooming forever
+          window.L.popup().setLatLng([lat, lon]).setContent('<div class="foot">' + g.length + " listings here</div>" + g.slice(0, 12).map((l) => '<button class="btn btn-ghost" type="button" data-open="' + l.id + '"><span>' + L.esc(priceText(l)) + " · " + L.esc(l.t.slice(0, 28)) + "</span></button>").join("")).openOn(map);
+        } else map.fitBounds(b, { padding: [50, 50], maxZoom: 17 });
+      });
+      m.addTo(layerL);
+    });
   }
   function renderMap() {
     if (!map) return;
-    layerL.clearLayers(); markers = new Map();
-    const pts = [];
-    visible.forEach((l) => {
-      if (l.lat == null) return;
-      const m = window.L.circleMarker([l.lat, l.lon], { renderer: canvas, radius: 6, color: "#000", weight: 1, fillColor: pctColor(l.c), fillOpacity: 0.92 });
-      m.on("click", () => openDrawer(l.id, true));
-      m.on("mouseover", () => hot(l.id, true)); m.on("mouseout", () => hot(l.id, false));
-      m.bindTooltip(L.esc(priceText(l)) + "/" + UNIT_LABEL[S.f.unit] + (l.prec && l.prec !== "exact" ? " (approx. location)" : ""), { direction: "top" });
-      m.addTo(layerL); markers.set(l.id, m); pts.push([l.lat, l.lon]);
-    });
+    const pts = visible.filter((l) => l.lat != null).map((l) => [l.lat, l.lon]);
     if (S.fitNext && pts.length && !$("fMapOnly").checked) { map.fitBounds(pts, { padding: [30, 30], maxZoom: 14 }); }
     S.fitNext = false;
+    drawMarkers();
   }
   function hot(id, on) {
     const m = markers.get(id), card = document.querySelector('.card[data-id="' + id + '"]');
@@ -140,12 +202,19 @@
   function openDrawer(id, fromMap) {
     const l = byId.get(id); if (!l) return;
     S.lastFocus = document.activeElement; S.sel = id;
+    $("dBody").innerHTML = '<h2 id="dTitle">' + L.esc(l.t) + '</h2><p class="foot" role="status">Loading details…</p>';
+    $("drawer").hidden = false; $("dClose").focus();
+    loadDetail([id]).then(() => { if (S.sel === id) renderDrawer(id, fromMap); },
+      () => { if (S.sel === id) $("dBody").insertAdjacentHTML("beforeend", '<p class="empty">Could not load the details. Check your connection and try again.</p>'); });
+  }
+  function renderDrawer(id, fromMap) {
+    const l = byId.get(id), dt = detailOf(id);
     document.querySelectorAll(".card.sel").forEach((c) => c.classList.remove("sel"));
     const card = document.querySelector('.card[data-id="' + id + '"]');
     if (card) { card.classList.add("sel"); if (fromMap) card.scrollIntoView({ block: "center" }); }
-    const ok = l.x.ok.map((f) => '<li><b>' + L.esc(f.f) + "</b><br>" + L.esc(f.d).replace(/JUDGEMENT CALLS?/g, '<span class="judge">judgement calls</span>') +
+    const ok = dt.x.ok.map((f) => '<li><b>' + L.esc(f.f) + "</b><br>" + L.esc(f.d).replace(/JUDGEMENT CALLS?/g, '<span class="judge">judgement calls</span>') +
       (f.s ? '<br><a class="src" href="' + L.esc(L.safeUrl(f.s)) + '" target="_blank" rel="noopener noreferrer">source ↗</a>' : "") + "</li>").join("");
-    const no = l.x.no.map((m) => '<li class="no"><b>' + L.esc(m.f) + "</b> — missing<br>" + L.esc(m.w) + "</li>").join("");
+    const no = dt.x.no.map((m) => '<li class="no"><b>' + L.esc(m.f) + "</b> — missing<br>" + L.esc(m.w) + "</li>").join("");
     const per = ["aana", "ropani", "sqft", "sqm"].map((u) => "<dt>per " + UNIT_LABEL[u] + "</dt><dd>" + L.esc(L.fmtMoney(L.perUnit(l.p, u, T))) + "</dd>").join("");
     const approx = l.prec === "palika" ? " (palika centre only)" : l.prec === "locality" ? " (approximate)" : "";
     $("dBody").innerHTML =
@@ -155,13 +224,12 @@
       (l.p != null ? per : "") + "<dt>place</dt><dd>" + L.esc(placeText(l)) + L.esc(approx) + "</dd>" +
       (l.po ? "<dt>ad dated</dt><dd>" + L.esc(l.po) + "</dd>" : "") + (l.fac ? "<dt>facing</dt><dd>" + L.esc(l.fac) + "</dd>" : "") + "<dt>first seen</dt><dd>" + L.esc(l.fs || "?") + "</dd><dt>last seen</dt><dd>" + L.esc(l.ls || "?") + "</dd></dl>" +
       '<h3 class="sec">X-Ray · each factor cited, none estimated</h3><ul class="factors">' + ok + no + "</ul>" +
-      (l.h && l.h.length > 1 ? '<h3 class="sec">Price history (NPR/m²)</h3>' + spark(l.h) : "") +
+      (dt.h && dt.h.length > 1 ? '<h3 class="sec">Price history (NPR/m²)</h3>' + spark(dt.h) : "") +
       '<p><a class="btn btn-primary" href="' + L.esc(L.safeUrl(l.url)) + '" target="_blank" rel="noopener noreferrer"><span>View original ad ↗</span></a> ' +
       '<button class="btn btn-outline" type="button" data-star="' + l.id + '" aria-pressed="' + !!S.watch[l.id] + '"><span>' + (S.watch[l.id] ? "★ Watching" : "☆ Watch") + "</span></button> " +
       '<button class="btn btn-ghost" type="button" data-copy="1"><span>Copy link</span></button></p>' +
       '<h3 class="sec">Your notes (stored only in this browser)</h3><label class="sr" for="note">Notes</label><textarea id="note" class="notes" placeholder="> road 13ft, owner flexible…"></textarea>';
     const note = $("note"); note.value = store.get("jagga.note." + id, ""); note.addEventListener("input", () => store.set("jagga.note." + id, note.value));
-    $("drawer").hidden = false; $("dClose").focus();
     const m = markers.get(id); if (m && map) { map.panTo(m.getLatLng()); }
     pushHash();
   }
@@ -199,7 +267,7 @@
     if (!ids.length) return '<p class="empty">Nothing starred yet. Your watchlist and notes live only in this browser; export them to keep a copy.</p>';
     return "<table><tr><th>listing</th><th class=n>price</th><th>note</th></tr>" + ids.map((i) => { const l = byId.get(i), n = store.get("jagga.note." + i, "");
       return '<tr><td><button class="btn btn-ghost" type="button" data-open="' + i + '"><span>' + L.esc(l.t.slice(0, 48)) + '</span></button></td><td class="n">' + L.esc(priceText(l)) + "</td><td>" + L.esc(n.slice(0, 80)) + "</td></tr>"; }).join("") + "</table>" +
-      '<p><button class="btn btn-outline" type="button" id="wExport"><span>Export JSON</span></button> <label class="btn btn-outline" style="display:inline-block"><span>Import JSON</span><input id="wImport" type="file" accept="application/json" class="sr"></label></p>';
+      '<p><button class="btn btn-primary" type="button" id="wPrint"><span>Print shortlist</span></button> <button class="btn btn-outline" type="button" id="wExport"><span>Export JSON</span></button> <label class="btn btn-outline" style="display:inline-block"><span>Import JSON</span><input id="wImport" type="file" accept="application/json" class="sr"></label></p>';
   }
 
   // ---------- downloads ----------
@@ -250,13 +318,38 @@
     const ls = S.cmp.map((i) => byId.get(i)).filter(Boolean);
     if (ls.length < 2) return '<p class="empty">Pick two or three listings with “compare” on their cards, then open this again.</p>';
     const row = (label, fn) => "<tr><th scope=\"row\">" + label + "</th>" + ls.map((l) => "<td>" + fn(l) + "</td>").join("") + "</tr>";
-    const factor = (l, name) => { const f = l.x.ok.find((x) => x.f === name); return f ? L.esc(f.d) : (l.x.no.find((x) => x.f === name) ? "<i>missing</i>" : "–"); };
+    const factor = (l, name) => { const x = detailOf(l.id).x, f = x.ok.find((q) => q.f === name); return f ? L.esc(f.d) : (x.no.find((q) => q.f === name) ? "<i>missing</i>" : "–"); };
     return '<table class="cmp-table"><thead><tr><th></th>' + ls.map((l) => '<th scope="col"><button class="btn btn-ghost" type="button" data-open="' + l.id + '"><span>' + L.esc(l.t.slice(0, 34)) + "</span></button></th>").join("") + "</tr></thead><tbody>" +
       row("price /" + UNIT_LABEL[S.f.unit], (l) => L.esc(priceText(l))) + row("total", (l) => L.esc(l.tot ? L.fmtMoney(l.tot) : "n/a")) +
       row("area", (l) => L.esc(areaText(l))) + row("road", (l) => (l.road ? l.road + " ft" : "–")) + row("place", (l) => L.esc(placeText(l))) +
       row("vs comps", (l) => L.esc(L.compsLabel(l.c) || "no comps")) + row("govt valuation", (l) => factor(l, "vs government minimum valuation")) +
       row("time on market", (l) => factor(l, "time on market")) + row("infrastructure", (l) => factor(l, "infrastructure nearby")) +
       row("source", (l) => '<a href="' + L.esc(L.safeUrl(l.url)) + '" target="_blank" rel="noopener noreferrer">' + L.esc(l.src) + " ↗</a>") + "</tbody></table>";
+  }
+  // ---------- printable shortlist: a plain light page of the starred listings, their cited X-Ray and your own notes ----------
+  function shortlistHTML(ids) {
+    const rows = ids.map((id) => {
+      const l = byId.get(id), dt = detailOf(id), note = store.get("jagga.note." + id, "");
+      const ok = dt.x.ok.map((f) => "<li><b>" + L.esc(f.f) + "</b>: " + L.esc(f.d) + "</li>").join("");
+      const no = dt.x.no.map((m) => "<li class=\"no\"><b>" + L.esc(m.f) + "</b>: missing, " + L.esc(m.w) + "</li>").join("");
+      return "<section><h2>" + L.esc(l.t) + "</h2><p class=\"big\">" + L.esc(priceText(l)) + " /" + UNIT_LABEL[S.f.unit] + (l.tot ? " · total " + L.esc(L.fmtMoney(l.tot)) : "") + "</p>" +
+        "<p>" + L.esc(areaText(l)) + " · " + L.esc(placeText(l)) + (l.road ? " · " + l.road + " ft road" : "") + (l.po ? " · ad dated " + L.esc(l.po) : "") + "</p>" +
+        "<ul>" + ok + no + "</ul>" + (note ? "<p class=\"note\"><b>My notes:</b> " + L.esc(note) + "</p>" : "") +
+        "<p class=\"src\">Original ad: " + L.esc(L.safeUrl(l.url)) + "</p></section>";
+    }).join("");
+    return "<!doctype html><meta charset=\"utf-8\"><title>Shortlist</title><style>body{font:13px/1.45 Georgia,serif;max-width:780px;margin:20px auto;padding:0 14px;color:#111}" +
+      "h1{font:700 20px sans-serif}h2{font:700 15px sans-serif;margin:0}section{border-top:2px solid #111;padding:10px 0;break-inside:avoid}.big{font:700 17px sans-serif;margin:2px 0}" +
+      "ul{margin:6px 0;padding-left:18px}.no{color:#666}.note{background:#f3f3f3;padding:6px 8px}.src{font-size:11px;color:#444;word-break:break-all}.fine{font-size:11px;color:#444}</style>" +
+      "<h1>Land shortlist (" + ids.length + ")</h1><p class=\"fine\">Printed " + new Date().toISOString().slice(0, 10) + " from the Jaggasignal screening tool. Screening only, not advice: check the lalpurja, napi naksa, a site visit and the current malpot rate. Prices are asking prices.</p>" + rows;
+  }
+  function printShortlist() {
+    const ids = Object.keys(S.watch).filter((i) => byId.has(i));
+    if (!ids.length) return;
+    const w = window.open("", "_blank");
+    if (!w) { $("mBody").insertAdjacentHTML("afterbegin", '<p class="empty">Your browser blocked the print window. Allow pop-ups for this site and try again.</p>'); return; }
+    w.document.write("<p>Preparing…</p>");
+    loadDetail(ids).then(() => { w.document.open(); w.document.write(shortlistHTML(ids)); w.document.close(); w.focus(); setTimeout(() => w.print(), 300); },
+      () => { w.document.body.textContent = "Could not load the listing details."; });
   }
   function copyLink() {
     const done = () => { $("dBody").insertAdjacentHTML("afterbegin", '<p class="judge" role="status">Link copied.</p>'); };
@@ -267,6 +360,8 @@
   function init() {
     D.meta.districts.forEach((d) => $("fDis").insertAdjacentHTML("beforeend", '<option value="' + L.esc(d.district_id) + '">' + L.esc(d.district) + " (" + d.n + ")</option>"));
     D.meta.sources.forEach((s) => $("fSrc").insertAdjacentHTML("beforeend", '<option value="' + L.esc(s.source) + '">' + L.esc(s.source) + " (" + s.n + ")</option>"));
+    const cuts = D.listings.filter((l) => L.isCut(l)).length;     // honest filter: no genuine seller price cut observed yet => say so
+    if (!cuts) { $("fCut").disabled = true; $("fCut").parentElement.title = "No seller price cut has been observed yet; this fills in as listings are re-checked over time."; $("fCut").nextElementSibling.textContent = "Price cut (none seen yet)"; }
     Object.assign(S.f, L.parseHash(location.hash));
     if (S.f.fresh) { S.f.age = "7"; delete S.f.fresh; }          // old shared links used fresh=1 ("new this week")
     writeUI();
@@ -280,6 +375,11 @@
     ["fPmin", "fPmax", "fAmin", "fAmax", "fRoad"].forEach((id) => $(id).addEventListener("input", debounce(refresh, 250)));
     $("q").addEventListener("input", debounce(refresh, 200)); $("searchForm").addEventListener("submit", (e) => { e.preventDefault(); refresh(); });
     $("fMapOnly").addEventListener("change", () => { S.shown = PAGE; renderList(); });
+    $("histSvg").addEventListener("click", (e) => {
+      const r = e.target.closest("rect"); if (!r) return;
+      const round = (x) => String(+(x >= 1000 ? Math.round(x / 100) * 100 : x.toPrecision(2)));
+      S.f.pmin = round(+r.dataset.lo); S.f.pmax = round(+r.dataset.hi); writeUI(); refresh();
+    });
     $("btnReset").addEventListener("click", () => { S.f = { unit: "aana", aunit: "aana", sort: "price" }; writeUI(); refresh(); });
     $("btnMore").addEventListener("click", () => { S.shown += PAGE; renderList(); });
     $("lyL").addEventListener("change", (e) => map && (e.target.checked ? layerL.addTo(map) : map.removeLayer(layerL)));
@@ -288,7 +388,7 @@
     $("dClose").addEventListener("click", closeDrawer); $("mClose").addEventListener("click", () => $("modal").close());
     $("btnCoverage").addEventListener("click", () => openModal("coverage", coverageHTML()));
     $("btnAbout").addEventListener("click", () => openModal("about", aboutHTML()));
-    $("btnCompare").addEventListener("click", () => openModal("compare", compareHTML()));
+    $("btnCompare").addEventListener("click", () => { openModal("compare", '<p class="foot" role="status">Loading…</p>'); loadDetail(S.cmp).then(() => { $("mBody").innerHTML = compareHTML(); }, () => { $("mBody").innerHTML = '<p class="empty">Could not load the details.</p>'; }); });
     renderSaved();
     $("savedSel").addEventListener("change", (e) => {
       const h = saved()[e.target.value]; if (h === undefined) return;
@@ -319,6 +419,7 @@
       const d = e.target.closest("[data-delsaved]");
       if (d) { const all = saved(); delete all[d.dataset.delsaved]; store.set("jagga.saved", all); renderSaved(); $("mBody").innerHTML = savedHTML(); }
       if (e.target.closest("[data-copy]")) copyLink();
+      if (e.target.closest("#wPrint")) printShortlist();
       if (e.target.id === "wExport") download("jaggasignal-watchlist.json", "application/json", JSON.stringify({ watch: S.watch, notes: Object.keys(S.watch).reduce((o, i) => (o[i] = store.get("jagga.note." + i, ""), o), {}) }, null, 2));
     });
     document.addEventListener("change", (e) => {

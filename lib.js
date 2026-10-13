@@ -64,6 +64,7 @@
   }
 
   function isCut(l) {
+    if (l.cut != null) return !!l.cut;                 // precomputed in the slim list payload
     const h = l.h || [];
     return h.length > 1 && h[h.length - 1][1] < h[h.length - 2][1];
   }
@@ -127,6 +128,20 @@
   }
   function sort(list, key) { return list.slice().sort(SORTS[key] || SORTS.price); }
 
+  /** Log-spaced histogram of positive values (prices span orders of magnitude). Returns {edges, counts, min, max, median}. */
+  function histogram(values, bins) {
+    const v = values.filter((x) => x != null && x > 0).sort((a, b) => a - b);
+    if (!v.length) return null;
+    const lo = Math.log(v[0]), hi = Math.log(v[v.length - 1]), n = bins || 24;
+    const span = hi - lo || 1;
+    const edges = [], counts = new Array(n).fill(0);
+    for (let i = 0; i <= n; i++) edges.push(Math.exp(lo + (span * i) / n));
+    // epsilon: a value exactly on an edge belongs to the upper bin (log() rounding would otherwise drop it into the lower one)
+    v.forEach((x) => { counts[Math.min(n - 1, Math.floor(((Math.log(x) - lo) / span) * n + 1e-9))]++; });
+    const mid = v.length >> 1;
+    return { edges: edges, counts: counts, min: v[0], max: v[v.length - 1], median: v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2 };
+  }
+
   // -- URL state -----------------------------------------------------------------------------
   const KEYS = ["q", "dis", "src", "cls", "unit", "pmin", "pmax", "aunit", "amin", "amax", "road", "age", "fresh", "cut", "dups", "sort"];
   function toHash(f) {
@@ -149,7 +164,7 @@
   // -- exports (F18) -------------------------------------------------------------------------
   const CSV_COLS = [["id", "id"], ["title", "t"], ["locality", "loc"], ["palika", "pal"], ["district", "dis"], ["area_sqm", "a"],
     ["npr_per_sqm", "p"], ["price_total_npr", "tot"], ["road_ft", "road"], ["source", "src"], ["url", "url"], ["first_seen", "fs"],
-    ["last_seen", "ls"], ["lat", "lat"], ["lon", "lon"], ["location_precision", "prec"]];
+    ["last_seen", "ls"], ["price_confidence", "pc"], ["lat", "lat"], ["lon", "lon"], ["location_precision", "prec"]];
   function csvCell(v) {
     if (v == null) return "";
     let s = String(v);
@@ -186,5 +201,5 @@
   /** Only http(s) links may be rendered as hrefs: data comes from scraped sources. */
   function safeUrl(u) { return /^https?:\/\//i.test(u || "") ? u : "#"; }
 
-  return { unitTable, perUnit, toPps, fmtMoney, areaNotation, daysSince, isNewAd, isCut, compsLabel, filter, sort, toHash, parseHash, toCSV, toGeoJSON, toKML, esc, safeUrl };
+  return { histogram, unitTable, perUnit, toPps, fmtMoney, areaNotation, daysSince, isNewAd, isCut, compsLabel, filter, sort, toHash, parseHash, toCSV, toGeoJSON, toKML, esc, safeUrl };
 });
