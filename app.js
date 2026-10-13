@@ -24,6 +24,8 @@
     const sqm = Math.round(l.a).toLocaleString("en-US") + " m²";
     return l.sys ? L.areaNotation(l.a, l.sys, D.meta.units) + " (" + sqm + ")" : sqm + " · " + (l.a / T.aana).toFixed(1) + " aana";
   }
+  // Lead with the RESOLVED place; raw portal text is shown only when short and clean (it is often a jumble).
+  const placeText = (l) => [l.pal, l.dis, l.loc && l.loc.length <= 36 ? l.loc : ""].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(", ");
   const ago = (d) => { const n = L.daysSince(d); return n == null ? "" : n === 0 ? "today" : n + "d ago"; };
   const isNew = (l) => L.isNewAd(l);
 
@@ -57,13 +59,13 @@
     const c = l.c, tags = [];
     if (c) tags.push('<span class="tag ' + (c.p < 25 ? "cheap" : c.p > 75 ? "dear" : "") + '"><i>' + L.esc(L.compsLabel(c)) + "</i></span>");
     if (c && c.rel === "weak") tags.push('<span class="tag weak" title="Compared with the whole district: locations differ"><i>weak comps</i></span>');
+    if (l.pb === "total_reread") tags.push('<span class="tag weak" title="The ad put a total price in the per-unit field; it has been read as a total"><i>read as total</i></span>');
     if (L.isCut(l)) tags.push('<span class="tag cut"><i>price cut</i></span>');
     if (isNew(l)) tags.push('<span class="tag new"><i>new</i></span>');
     if (l.tw) tags.push('<span class="tag weak" title="Same district, area, price and place seen in other postings"><i>posted ' + (l.tw + 1) + "×</i></span>");
     const age = L.daysSince(l.po);
     if (age != null && age > 180) tags.push('<span class="tag weak" title="The portal dates this ad long ago; it may no longer be available"><i>ad ' + (age > 365 ? Math.round(age / 365 * 10) / 10 + "y" : Math.round(age / 30) + "mo") + " old</i></span>");
-    // Lead with the RESOLVED place; raw portal text is shown only when short and clean (it is often a jumble).
-    const place = [l.pal, l.dis, l.loc && l.loc.length <= 36 ? l.loc : ""].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(", ");
+    const place = placeText(l);
     const starred = !!S.watch[l.id];
     return '<li class="card' + (S.sel === l.id ? " sel" : "") + '" data-id="' + l.id + '">' +
       '<div class="price">' + L.esc(priceText(l)) + (l.p != null ? " <small>/" + UNIT_LABEL[S.f.unit] + "</small>" : "") + "</div>" +
@@ -150,7 +152,7 @@
       '<h2 id="dTitle">' + L.esc(l.t) + "</h2>" +
       '<div class="price">' + L.esc(priceText(l)) + " <small>/" + UNIT_LABEL[S.f.unit] + "</small></div>" +
       '<dl class="kv"><dt>total</dt><dd>' + L.esc(l.tot ? L.fmtMoney(l.tot) : "n/a") + "</dd><dt>area</dt><dd>" + L.esc(areaText(l)) + "</dd>" +
-      (l.p != null ? per : "") + "<dt>place</dt><dd>" + L.esc([l.loc, l.pal, l.dis].filter(Boolean).join(", ")) + L.esc(approx) + "</dd>" +
+      (l.p != null ? per : "") + "<dt>place</dt><dd>" + L.esc(placeText(l)) + L.esc(approx) + "</dd>" +
       (l.po ? "<dt>ad dated</dt><dd>" + L.esc(l.po) + "</dd>" : "") + (l.fac ? "<dt>facing</dt><dd>" + L.esc(l.fac) + "</dd>" : "") + "<dt>first seen</dt><dd>" + L.esc(l.fs || "?") + "</dd><dt>last seen</dt><dd>" + L.esc(l.ls || "?") + "</dd></dl>" +
       '<h3 class="sec">X-Ray · each factor cited, none estimated</h3><ul class="factors">' + ok + no + "</ul>" +
       (l.h && l.h.length > 1 ? '<h3 class="sec">Price history (NPR/m²)</h3>' + spark(l.h) : "") +
@@ -251,7 +253,7 @@
     const factor = (l, name) => { const f = l.x.ok.find((x) => x.f === name); return f ? L.esc(f.d) : (l.x.no.find((x) => x.f === name) ? "<i>missing</i>" : "–"); };
     return '<table class="cmp-table"><thead><tr><th></th>' + ls.map((l) => '<th scope="col"><button class="btn btn-ghost" type="button" data-open="' + l.id + '"><span>' + L.esc(l.t.slice(0, 34)) + "</span></button></th>").join("") + "</tr></thead><tbody>" +
       row("price /" + UNIT_LABEL[S.f.unit], (l) => L.esc(priceText(l))) + row("total", (l) => L.esc(l.tot ? L.fmtMoney(l.tot) : "n/a")) +
-      row("area", (l) => L.esc(areaText(l))) + row("road", (l) => (l.road ? l.road + " ft" : "–")) + row("place", (l) => L.esc([l.pal, l.dis].filter(Boolean).join(", "))) +
+      row("area", (l) => L.esc(areaText(l))) + row("road", (l) => (l.road ? l.road + " ft" : "–")) + row("place", (l) => L.esc(placeText(l))) +
       row("vs comps", (l) => L.esc(L.compsLabel(l.c) || "no comps")) + row("govt valuation", (l) => factor(l, "vs government minimum valuation")) +
       row("time on market", (l) => factor(l, "time on market")) + row("infrastructure", (l) => factor(l, "infrastructure nearby")) +
       row("source", (l) => '<a href="' + L.esc(L.safeUrl(l.url)) + '" target="_blank" rel="noopener noreferrer">' + L.esc(l.src) + " ↗</a>") + "</tbody></table>";
