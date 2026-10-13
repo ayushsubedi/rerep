@@ -75,7 +75,7 @@
     return side + " (" + c.p + "th pct, " + c.n + (c.rel === "weak" ? ", weak" : "") + ")";
   }
 
-  /** f: {q, dis, src, cls, unit, pmin, pmax, aunit, amin, amax, road, fresh, cut, bounds:[s,w,n,e]} */
+  /** f: {q, dis, src, cls, unit, pmin, pmax, aunit, amin, amax, road, age, fresh, cut, bounds:[s,w,n,e]} */
   function filter(listings, f, table) {
     const q = (f.q || "").trim().toLowerCase();
     const pmin = f.pmin ? toPps(+f.pmin, f.unit || "aana", table) : null;
@@ -96,6 +96,10 @@
       if (amax != null && l.a > amax) return false;
       if (f.road && (l.road == null || l.road < +f.road)) return false;
       if (f.fresh && !isNewAd(l, today)) return false;
+      if (f.age) {                                       // posted within N days, by the PORTAL's date; undated ads cannot qualify
+        const n = daysSince(l.po, today);
+        if (n == null || n > +f.age) return false;
+      }
       if (l.dup && !f.dups) return false;
       if (f.cut && !isCut(l)) return false;
       if (f.bounds) {
@@ -124,7 +128,7 @@
   function sort(list, key) { return list.slice().sort(SORTS[key] || SORTS.price); }
 
   // -- URL state -----------------------------------------------------------------------------
-  const KEYS = ["q", "dis", "src", "cls", "unit", "pmin", "pmax", "aunit", "amin", "amax", "road", "fresh", "cut", "dups", "sort"];
+  const KEYS = ["q", "dis", "src", "cls", "unit", "pmin", "pmax", "aunit", "amin", "amax", "road", "age", "fresh", "cut", "dups", "sort"];
   function toHash(f) {
     const p = [];
     KEYS.forEach(function (k) { if (f[k] !== undefined && f[k] !== "" && f[k] !== false && f[k] !== null) p.push(k + "=" + encodeURIComponent(f[k] === true ? "1" : f[k])); });
