@@ -13,7 +13,7 @@
 
   const S = { f: { unit: "aana", aunit: "aana", sort: "price" }, cmp: [], shown: PAGE, sel: null, watch: store.get("jagga.watch", {}), bounds: null, fitNext: true, lastFocus: null };
   const byId = new Map(D.listings.map((l) => [l.id, l]));
-  let visible = [], map = null, layerL = null, layerC = null, layerB = null, markers = new Map(), canvas = null;
+  let visible = [], map = null, layerS = null, layerL = null, layerC = null, layerB = null, markers = new Map(), canvas = null;
 
   // ---------- detail shards: X-Ray text and price history load on demand (d/<first id char>.js) ----------
   const DETAIL = {}, shardP = {};
@@ -127,7 +127,7 @@
     map = window.L.map("map", { preferCanvas: true, zoomControl: true, attributionControl: true }).setView([28.2, 84.2], 7);
     window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap contributors" }).addTo(map);
     canvas = window.L.canvas({ padding: 0.5 });
-    layerL = window.L.layerGroup().addTo(map); layerC = window.L.layerGroup();
+    layerL = window.L.layerGroup().addTo(map); layerS = window.L.layerGroup().addTo(map); layerC = window.L.layerGroup();
     const have = {}; D.meta.districts.forEach((d) => { have[d.district_id] = d.n; });
     layerB = window.L.geoJSON(D.boundaries, {
       style: (f) => (have[f.properties.id] ? { color: "#7656b8", weight: 1, fillColor: "#00ffff", fillOpacity: 0.09 } : { color: "#4a3578", weight: 1, fillOpacity: 0, dashArray: "3 4" }),
@@ -178,6 +178,7 @@
       });
       m.addTo(layerL);
     });
+    pinSelected();
   }
   function renderMap() {
     if (!map) return;
@@ -185,6 +186,22 @@
     if (S.fitNext && pts.length && !$("fMapOnly").checked) { map.fitBounds(pts, { padding: [30, 30], maxZoom: 14 }); }
     S.fitNext = false;
     drawMarkers();
+  }
+  /** The selected listing gets its own pin on a separate layer, so it stays visible even when clustering hides its marker. */
+  function pinSelected() {
+    if (!layerS) return;
+    layerS.clearLayers();
+    const l = S.sel && byId.get(S.sel);
+    if (!l || l.lat == null) return;
+    window.L.circleMarker([l.lat, l.lon], { radius: 15, color: "#ff00ff", weight: 3, fillColor: "#ff00ff", fillOpacity: 0.12, interactive: false }).addTo(layerS);
+    window.L.circleMarker([l.lat, l.lon], { radius: 7, color: "#fff", weight: 2, fillColor: pctColor(l.c), fillOpacity: 1, interactive: false }).addTo(layerS);
+  }
+  function showOnMap(l) {
+    if (!map || l.lat == null) return;
+    if (window.matchMedia("(max-width: 900px)").matches && !document.body.classList.contains("show-map")) return;   // map hidden on phones until its tab is open
+    const z = Math.max(map.getZoom(), l.prec === "palika" ? 11 : 15);
+    const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (calm) map.setView([l.lat, l.lon], z); else map.flyTo([l.lat, l.lon], z, { duration: 0.6 });
   }
   function hot(id, on) {
     const m = markers.get(id), card = document.querySelector('.card[data-id="' + id + '"]');
@@ -227,14 +244,15 @@
       (dt.h && dt.h.length > 1 ? '<h3 class="sec">Price history (NPR/m²)</h3>' + spark(dt.h) : "") +
       '<p><a class="btn btn-primary" href="' + L.esc(L.safeUrl(l.url)) + '" target="_blank" rel="noopener noreferrer"><span>View original ad ↗</span></a> ' +
       '<button class="btn btn-outline" type="button" data-star="' + l.id + '" aria-pressed="' + !!S.watch[l.id] + '"><span>' + (S.watch[l.id] ? "★ Watching" : "☆ Watch") + "</span></button> " +
+      (l.lat != null ? '<button class="btn btn-ghost only-narrow" type="button" data-showmap="' + l.id + '"><span>Show on map</span></button> ' : "") +
       '<button class="btn btn-ghost" type="button" data-copy="1"><span>Copy link</span></button></p>' +
       '<h3 class="sec">Your notes (stored only in this browser)</h3><label class="sr" for="note">Notes</label><textarea id="note" class="notes" placeholder="> road 13ft, owner flexible…"></textarea>';
     const note = $("note"); note.value = store.get("jagga.note." + id, ""); note.addEventListener("input", () => store.set("jagga.note." + id, note.value));
-    const m = markers.get(id); if (m && map) { map.panTo(m.getLatLng()); }
+    pinSelected(); showOnMap(l);
     pushHash();
   }
   function closeDrawer() {
-    $("drawer").hidden = true; S.sel = null; document.querySelectorAll(".card.sel").forEach((c) => c.classList.remove("sel"));
+    $("drawer").hidden = true; S.sel = null; pinSelected(); document.querySelectorAll(".card.sel").forEach((c) => c.classList.remove("sel"));
     if (S.lastFocus && document.contains(S.lastFocus)) S.lastFocus.focus(); pushHash();
   }
 
@@ -400,10 +418,15 @@
     $("tabMap").addEventListener("click", () => { document.body.classList.add("show-map"); $("tabMap").classList.add("on"); $("tabList").classList.remove("on"); if (map) setTimeout(() => map.invalidateSize(), 50); });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("drawer").hidden && !$("modal").open) closeDrawer(); });
     document.addEventListener("click", (e) => {
-      const t = e.target.closest("[data-star],[data-cmp],[data-open],[data-cov],[data-export],.card"); if (!t) return;
+      const t = e.target.closest("[data-star],[data-cmp],[data-open],[data-showmap],[data-cov],[data-export],.card"); if (!t) return;
       if (t.dataset.cmp) { e.stopPropagation(); toggleCompare(t.dataset.cmp); }
       else if (t.dataset.star) { e.stopPropagation(); toggleWatch(t.dataset.star); }
       else if (t.dataset.open) { if ($("modal").open) $("modal").close(); openDrawer(t.dataset.open, false); }
+      else if (t.dataset.showmap) {                      // phones: leave the X-Ray, open the map tab on this listing, keep its pin
+        const id = t.dataset.showmap, l = byId.get(id);
+        $("drawer").hidden = true; $("tabMap").click();
+        setTimeout(() => { if (map) { map.invalidateSize(); S.sel = id; pinSelected(); showOnMap(l); } }, 80);
+      }
       else if (t.dataset.cov) openModal("coverage", coverageHTML());
       else if (t.dataset.export) { doExport(t.dataset.export); t.closest("details").open = false; }
       else if (t.classList.contains("card")) openDrawer(t.dataset.id, false);

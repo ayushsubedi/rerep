@@ -129,6 +129,11 @@ button, input, select { font: inherit; color: inherit; letter-spacing: inherit; 
 .drawer { position: fixed; right: 0; top: var(--top-h); bottom: 0; width: min(480px, 100%); z-index: 40; overflow: auto; background: #05000f;
   border: 2px solid var(--cyan); border-right: 0; box-shadow: 0 0 30px rgba(0,255,255,.25); }
 .drawer[hidden] { display: none; }
+.only-narrow { display: none; }
+/* desktop: dock the X-Ray over the LIST column so the map stays visible beside it (the selected listing is pinned and centred) */
+@media (min-width: 901px) {
+  .drawer { right: auto; left: 0; width: max(380px, 46vw); border-right: 2px solid var(--cyan); border-left: 0; }
+}
 .drawer-body, .modal-body { padding: 14px 16px 40px; }
 .drawer h2 { font-size: 20px; color: var(--cyan); text-shadow: 0 0 5px rgba(0,255,255,.5); margin-bottom: 4px; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 12px 0; font-size: 14px; } .kv dt { color: var(--chrome-dim); } .kv dd { margin: 0; }
@@ -157,6 +162,7 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; } th, td { text
   body.show-map .map-pane { display: block; } body.show-map .list-pane { display: none; }
   .tabbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; gap: 10px; justify-content: center; padding: 6px; background: rgba(9,0,20,.95); border-top: 2px solid var(--magenta); }
   .drawer { top: 0; width: 100%; border: 0; z-index: 60; }
+  .only-narrow { display: inline-flex; }
   .price { font-size: 21px; }
   .fx-sun { opacity: .14; }
 }

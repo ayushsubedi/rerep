@@ -30,7 +30,7 @@
     "Loading details…": "विवरण लोड हुँदैछ…", "place": "स्थान", "area": "क्षेत्रफल", "first seen": "पहिलो पटक देखिएको", "last seen": "पछिल्लो पटक देखिएको",
     "ad dated": "विज्ञापन मिति", "facing": "मोहोडा", "per": "प्रति", "sq ft ": "वर्ग फिट",
     "X-Ray · each factor cited, none estimated": "एक्स-रे · हरेक कारक स्रोतसहित, अनुमान गरिएको छैन", "Price history (NPR/m²)": "मूल्य इतिहास (रु./वर्ग मि.)",
-    "View original ad ↗": "मूल विज्ञापन हेर्नुहोस् ↗", "☆ Watch": "☆ मनपर्ने", "★ Watching": "★ मनपर्नेमा", "Copy link": "लिङ्क कपी", "Link copied.": "लिङ्क कपी भयो।",
+    "View original ad ↗": "मूल विज्ञापन हेर्नुहोस् ↗", "☆ Watch": "☆ मनपर्ने", "★ Watching": "★ मनपर्नेमा", "Show on map": "नक्सामा देखाउनुहोस्", "Copy link": "लिङ्क कपी", "Link copied.": "लिङ्क कपी भयो।",
     "Your notes (stored only in this browser)": "तपाईंका टिपोट (यही ब्राउजरमा मात्र सुरक्षित)", "missing": "छैन", "source ↗": "स्रोत ↗",
     "coverage": "समेटिएको क्षेत्र", "about": "बारेमा", "watchlist": "मनपर्ने सूची", "compare": "तुलना", "save search": "खोजी सुरक्षित",
     "Print shortlist": "छोटो सूची प्रिन्ट", "Export JSON": "JSON निर्यात", "Import JSON": "JSON आयात", "Save": "सुरक्षित गर्नुहोस्", "Delete": "मेट्नुहोस्",
