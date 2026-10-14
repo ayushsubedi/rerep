@@ -3,6 +3,10 @@
 @font-face { font-family: "Orbitron"; src: url("fonts/orbitron-var-latin.woff2") format("woff2"); font-weight: 400 900; font-display: swap; }
 @font-face { font-family: "Share Tech Mono"; src: url("fonts/sharetechmono-latin.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 
+@font-face { font-family: "Noto Sans Devanagari"; src: url("fonts/noto-sans-devanagari.woff2") format("woff2"); font-weight: 100 900; font-display: swap; unicode-range: U+0900-097F, U+1CD0-1CF9, U+200C-200D, U+25CC, U+A830-A839; }
+html[lang="ne"] body, html[lang="ne"] button, html[lang="ne"] input, html[lang="ne"] select { font-family: "Share Tech Mono", "Noto Sans Devanagari", monospace; }
+html[lang="ne"] .brand, html[lang="ne"] h1, html[lang="ne"] h2, html[lang="ne"] .btn { letter-spacing: 0; }
+
 :root {
   --void: #090014; --chrome: #e0e0e0; --chrome-dim: #b9b3cc; --panel: #1a103c; --panel-solid: #150c33;
   --magenta: #ff00ff; --cyan: #00ffff; --orange: #ff9900; --line: #2d1b4e; --line-ui: #7656b8; /* --line is decorative only; --line-ui (3.3:1) outlines controls */
