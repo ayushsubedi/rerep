@@ -13,7 +13,7 @@
 
   const S = { f: { unit: "aana", aunit: "aana", sort: "price" }, cmp: [], shown: PAGE, sel: null, watch: store.get("jagga.watch", {}), bounds: null, fitNext: true, lastFocus: null };
   const byId = new Map(D.listings.map((l) => [l.id, l]));
-  let visible = [], map = null, layerS = null, layerL = null, layerC = null, layerB = null, markers = new Map(), canvas = null;
+  let visible = [], map = null, layerI = null, layerS = null, layerL = null, layerC = null, layerB = null, markers = new Map(), canvas = null;
 
   // ---------- detail shards: X-Ray text and price history load on demand (d/<first id char>.js) ----------
   const DETAIL = {}, shardP = {};
@@ -51,14 +51,14 @@
     f.q = $("q").value; f.dis = $("fDis").value; f.src = $("fSrc").value; f.unit = $("fUnit").value;
     f.pmin = $("fPmin").value.replace(/,/g, ""); f.pmax = $("fPmax").value.replace(/,/g, "");
     f.aunit = $("fAunit").value; f.amin = $("fAmin").value; f.amax = $("fAmax").value; f.road = $("fRoad").value;
-    f.age = $("fAge").value; f.cut = $("fCut").checked; f.dups = $("fDups").checked; f.sort = $("fSort").value;
+    f.age = $("fAge").value; f.cut = $("fCut").checked; f.dups = $("fDups").checked; f.ideal = $("fIdeal").checked; f.sort = $("fSort").value;
   }
   function writeUI() {
     const f = S.f;
     $("q").value = f.q || ""; $("fDis").value = f.dis || ""; $("fSrc").value = f.src || ""; $("fUnit").value = f.unit || "aana";
     $("fPmin").value = f.pmin || ""; $("fPmax").value = f.pmax || ""; $("fAunit").value = f.aunit || "aana";
     $("fAmin").value = f.amin || ""; $("fAmax").value = f.amax || ""; $("fRoad").value = f.road || "";
-    $("fAge").value = f.age || ""; $("fCut").checked = !!f.cut; $("fDups").checked = !!f.dups; $("fSort").value = f.sort || "price";
+    $("fAge").value = f.age || ""; $("fCut").checked = !!f.cut; $("fDups").checked = !!f.dups; $("fIdeal").checked = !!f.ideal; $("fSort").value = f.sort || "price";
   }
   function hashState() { const m = /(?:^|&)l=([0-9a-f]+)/.exec(location.hash.slice(1)); return m ? m[1] : null; }
   function pushHash() {
@@ -77,6 +77,7 @@
     if (c && c.rel === "weak") tags.push('<span class="tag weak" title="Compared with the whole district: locations differ"><i>weak comps</i></span>');
     if (l.pc === "low") tags.push('<span class="tag weak" title="Low confidence: see the X-Ray for why"><i>price uncertain</i></span>');
     if (l.pb === "total_reread") tags.push('<span class="tag weak" title="The ad put a total price in the per-unit field; it has been read as a total"><i>read as total</i></span>');
+    if (S.f.ideal && l.ia >= 1) tags.unshift('<span class="tag ideal t' + l.ia + '" title="Hard criteria: ' + (l.ia === 3 ? "all pass" : l.ia === 2 ? "none fails, some unknown" : "exactly one fails (see the X-Ray)") + '"><i>' + ["", "near miss", "possible", "MATCH"][l.ia] + " · " + l.iz + "/5 wishes evidenced</i></span>");
     if (L.isCut(l)) tags.push('<span class="tag cut"><i>price cut</i></span>');
     if (isNew(l)) tags.push('<span class="tag new"><i>new</i></span>');
     if (l.tw) tags.push('<span class="tag weak" title="Same district, area, price and place seen in other postings"><i>posted ' + (l.tw + 1) + "×</i></span>");
@@ -139,6 +140,22 @@
       if (c.path) window.L.polyline(c.path, { color: "#ff9900", weight: 3, dashArray: "6 6" }).bindPopup(tip).addTo(layerC);
       window.L.circle([c.lat, c.lon], { radius: (c.radius_km || 0) * 1000, color: "#ff9900", weight: 1, fillOpacity: 0.06 }).bindPopup(tip).addTo(layerC);
     });
+    if (D.ideal) {
+      $("idealChip").hidden = false;
+      if (D.ideal.zones) {
+        $("lyIWrap").hidden = false;
+        layerI = window.L.layerGroup();
+        const c = D.ideal.zones.cell;
+        D.ideal.zones.cells.forEach((z) => {
+          const hot = z[2] > 0, warm = z[3] > 0;
+          const r = window.L.rectangle([[z[0], z[1]], [z[0] + c, z[1] + c]], { weight: hot || warm ? 1 : 0, color: "#ff00ff", fillColor: hot ? "#ff00ff" : warm ? "#ff9900" : "#00ffff", fillOpacity: hot ? 0.5 : warm ? 0.4 : 0.1, interactive: hot || warm });
+          if (hot || warm) r.bindTooltip(z[2] + " match, " + z[3] + " possible parcel(s) here (~2 km cell)");
+          r.addTo(layerI);
+        });
+        (D.ideal.anchors || []).forEach((an) => window.L.circle([an.lat, an.lon], { radius: an.radius_km * 1000, color: "#ff9900", weight: 1, dashArray: "4 4", fillOpacity: 0.04 })
+          .bindTooltip(L.esc(an.name) + ": " + an.radius_km + " km").addTo(layerI));
+      }
+    }
     window.JAGGA_MAP = map; map.on("zoomend", drawMarkers);
     map.on("moveend", () => { const b = map.getBounds(); S.bounds = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()]; if ($("fMapOnly").checked && !S.fitNext) { S.shown = PAGE; renderList(); } S.fitNext = false; });
   }
@@ -211,6 +228,13 @@
   }
 
   // ---------- drawer ----------
+  function idealHTML(dt, l) {
+    if (!dt.xi || !(l.ia >= 1)) return "";
+    const mark = { pass: "✓", fail: "✗", unknown: "?" };
+    const rows = dt.xi.map((k) => '<li class="ic ' + k[1] + '"><b>' + mark[k[1]] + " " + L.esc(k[0]) + (k[3] ? "" : " <small>(wish)</small>") + "</b><br>" + L.esc(k[2]) + "</li>").join("");
+    return '<h3 class="sec">✦ ' + L.esc((D.ideal && D.ideal.name) || "Ideal") + " checklist · " + ["", "near miss", "possible", "MATCH"][l.ia] + '</h3><ul class="factors ideal-list">' + rows + "</ul>" +
+      '<p class="foot">Pass, fail or unknown: unknown means the ad does not say, not that it is bad. A view, water, soil and tourism demand cannot be measured from this data.</p>';
+  }
   function spark(h, unit) {
     if (!h || h.length < 2) return "";
     const vs = h.map((x) => x[1]), lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs), W = 300, H = 50;
@@ -242,6 +266,7 @@
       '<dl class="kv"><dt>total</dt><dd>' + L.esc(l.tot ? L.fmtMoney(l.tot) : "n/a") + "</dd><dt>area</dt><dd>" + L.esc(areaText(l)) + "</dd>" +
       (l.p != null ? per : "") + "<dt>place</dt><dd>" + L.esc(placeText(l)) + L.esc(approx) + "</dd>" +
       (l.po ? "<dt>ad dated</dt><dd>" + L.esc(l.po) + "</dd>" : "") + (l.fac ? "<dt>facing</dt><dd>" + L.esc(l.fac) + "</dd>" : "") + "<dt>first seen</dt><dd>" + L.esc(l.fs || "?") + "</dd><dt>last seen</dt><dd>" + L.esc(l.ls || "?") + "</dd></dl>" +
+      idealHTML(dt, l) +
       '<h3 class="sec">X-Ray · each factor cited, none estimated</h3><ul class="factors">' + ok + no + "</ul>" +
       (dt.h && dt.h.length > 1 ? '<h3 class="sec">Price history (NPR/m²)</h3>' + spark(dt.h) : "") +
       '<p><a class="btn btn-primary" href="' + L.esc(L.safeUrl(l.url)) + '" target="_blank" rel="noopener noreferrer"><span>View original ad ↗</span></a> ' +
@@ -265,6 +290,19 @@
     const i = visible.findIndex((l) => l.id === id);
     $("dPos").textContent = i < 0 ? "" : (i + 1) + " / " + visible.length;
     $("dPrev").disabled = i <= 0; $("dNext").disabled = i < 0 || i >= visible.length - 1;
+  }
+  /** Language: hand the page to Google Translate's proxy (every word, including listings and X-Ray text) rather than a partial dictionary.
+   *  Only works from the published github.io address; the link flips to 'English' on the translated copy. */
+  function initTranslate() {
+    const b = $("btnLang"), h = location.hostname;
+    if (h.endsWith(".translate.goog")) {
+      b.hidden = false; b.firstElementChild.textContent = "English"; b.removeAttribute("lang");
+      b.href = "https://" + h.replace(/\.translate\.goog$/, "").replace(/--/g, "\0").replace(/-/g, ".").replace(/\0/g, "-") + location.pathname + location.hash;
+      b.removeAttribute("title");
+    } else if (h.endsWith(".github.io")) {
+      b.hidden = false;
+      b.href = "https://" + h.replace(/-/g, "--").replace(/\./g, "-") + ".translate.goog" + location.pathname + "?_x_tr_sl=en&_x_tr_tl=ne&_x_tr_hl=en&_x_tr_pto=wapp" + location.hash;
+    }
   }
   function closeDrawer() {
     $("drawer").hidden = true; document.body.classList.remove("sel-open"); settleMap(); S.sel = null; pinSelected(); document.querySelectorAll(".card.sel").forEach((c) => c.classList.remove("sel"));
@@ -405,6 +443,7 @@
     const want = hashState(); if (want && byId.has(want)) openDrawer(want, false);
 
     ["fDis", "fSrc", "fUnit", "fAunit", "fSort", "fAge", "fCut", "fDups"].forEach((id) => $(id).addEventListener("change", refresh));
+    $("fIdeal").addEventListener("change", () => { if ($("fIdeal").checked) $("fSort").value = "ideal"; else if ($("fSort").value === "ideal") $("fSort").value = "price"; refresh(); });
     ["fPmin", "fPmax", "fAmin", "fAmax", "fRoad"].forEach((id) => $(id).addEventListener("input", debounce(refresh, 250)));
     $("q").addEventListener("input", debounce(refresh, 200)); $("searchForm").addEventListener("submit", (e) => { e.preventDefault(); refresh(); });
     $("fMapOnly").addEventListener("change", () => { S.shown = PAGE; renderList(); });
@@ -417,6 +456,7 @@
     $("btnMore").addEventListener("click", () => { S.shown += PAGE; renderList(); });
     $("lyL").addEventListener("change", (e) => map && (e.target.checked ? layerL.addTo(map) : map.removeLayer(layerL)));
     $("lyB").addEventListener("change", (e) => map && (e.target.checked ? layerB.addTo(map).bringToBack() : map.removeLayer(layerB)));
+    $("lyI").addEventListener("change", (e) => map && layerI && (e.target.checked ? layerI.addTo(map) : map.removeLayer(layerI)));
     $("lyC").addEventListener("change", (e) => map && (e.target.checked ? layerC.addTo(map) : map.removeLayer(layerC)));
     $("dClose").addEventListener("click", closeDrawer); $("mClose").addEventListener("click", () => $("modal").close());
     $("btnCoverage").addEventListener("click", () => openModal("coverage", coverageHTML()));
@@ -431,6 +471,7 @@
     $("btnWatch").addEventListener("click", () => openModal("watchlist", watchHTML()));
     $("tabList").addEventListener("click", () => { document.body.classList.remove("show-map"); $("tabList").classList.add("on"); $("tabMap").classList.remove("on"); });
     $("tabMap").addEventListener("click", () => { document.body.classList.add("show-map"); $("tabMap").classList.add("on"); $("tabList").classList.remove("on"); if (map) setTimeout(() => map.invalidateSize(), 50); });
+    initTranslate();
     $("dPrev").addEventListener("click", () => step(-1)); $("dNext").addEventListener("click", () => step(1));
     document.addEventListener("keydown", (e) => {
       if ($("drawer").hidden || $("modal").open || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || ""))) return;

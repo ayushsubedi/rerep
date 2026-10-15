@@ -29,7 +29,7 @@
       <button class="btn btn-ghost" id="btnWatch" type="button"><span>★ Watchlist <b id="watchCount">0</b></span></button>
       <button class="btn btn-ghost" id="btnCoverage" type="button"><span>Coverage</span></button>
       <button class="btn btn-ghost" id="btnAbout" type="button"><span>About</span></button>
-      <button class="btn btn-ghost" id="btnLang" type="button" lang="ne" aria-pressed="false" aria-label="Language"><span>नेपाली</span></button>
+      <a class="btn btn-ghost" id="btnLang" href="#" hidden lang="ne" title="Opens this page through Google Translate. Google sees what you view there, and your watchlist and notes (stored per site address) are not carried across."><span>नेपाली</span></a>
     </nav>
   </div>
   <div class="filters" role="group" aria-label="Filters">
@@ -54,6 +54,7 @@
     <label class="chip" title="By the date the portal gives the ad. Ads with no posted date are hidden when this is set."><span class="lbl">Posted</span>
       <select id="fAge" aria-label="How recently the ad was posted"><option value="">any time</option><option value="7">last 7 days</option><option value="30">last 30 days</option><option value="90">last 3 months</option><option value="180">last 6 months</option></select></label>
     <label class="chip check"><input id="fCut" type="checkbox"><span>Price cut</span></label>
+    <label class="chip check ideal-chip" id="idealChip" hidden title="Your profile: hills in Nuwakot, Kathmandu or Chitwan, at least 1 ropani, a road, recently posted. Each criterion is shown as pass, fail or unknown, never guessed."><input id="fIdeal" type="checkbox"><span>✦ Ideal finder</span></label>
     <label class="chip check" title="The same plot is often posted several times"><input id="fDups" type="checkbox"><span>Show duplicates</span></label>
     <label class="chip"><span class="sr">Saved searches</span><select id="savedSel"><option value="">Saved searches…</option></select></label>
     <button class="btn btn-ghost" id="btnSave" type="button"><span>Save search</span></button>
@@ -70,7 +71,7 @@
           <select id="fSort" aria-label="Sort order">
             <option value="price">Price: low to high</option><option value="-price">Price: high to low</option>
             <option value="value">Cheapest vs comps</option><option value="total">Total price</option>
-            <option value="-area">Largest area</option><option value="new">Newest</option>
+            <option value="-area">Largest area</option><option value="ideal">Ideal finder order</option><option value="new">Newest</option>
           </select></label>
         <label class="chip check" title="Only list what is inside the map view"><input id="fMapOnly" type="checkbox"><span>Search map area</span></label>
         <details class="export"><summary class="btn btn-ghost"><span>Export</span></summary>
@@ -91,6 +92,7 @@
       <label class="chip check"><input id="lyL" type="checkbox" checked><span>Listings</span></label>
       <label class="chip check"><input id="lyC" type="checkbox"><span>Infrastructure</span></label>
       <label class="chip check"><input id="lyB" type="checkbox"><span>Districts &amp; coverage</span></label>
+      <label class="chip check" id="lyIWrap" hidden title="Ground in the three districts that is high enough to count as hills; brighter where parcels match"><input id="lyI" type="checkbox"><span>✦ Ideal zones</span></label>
     </div>
     <div class="legend" aria-hidden="false"><span class="sw sw-cheap"></span> cheap vs comps <span class="sw sw-mid"></span> mid <span class="sw sw-dear"></span> dear <span class="sw sw-none"></span> no comps</div>
   </section>
@@ -115,6 +117,5 @@
 <script src="lib.js"></script>
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="app.js"></script>
-<script src="i18n.js"></script>
 </body>
 </html>
