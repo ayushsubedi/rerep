@@ -5,6 +5,7 @@
   const L = window.JaggaLib, D = window.JAGGA, T = L.unitTable(D.meta.units);
   const $ = (id) => document.getElementById(id);
   const PAGE = 40;
+  const IDEAL_LABEL = ["", "near miss", "possible", "must-haves met", "IDEAL"];
 
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -77,7 +78,7 @@
     if (c && c.rel === "weak") tags.push('<span class="tag weak" title="Compared with the whole district: locations differ"><i>weak comps</i></span>');
     if (l.pc === "low") tags.push('<span class="tag weak" title="Low confidence: see the X-Ray for why"><i>price uncertain</i></span>');
     if (l.pb === "total_reread") tags.push('<span class="tag weak" title="The ad put a total price in the per-unit field; it has been read as a total"><i>read as total</i></span>');
-    if (S.f.ideal && l.ia >= 1) tags.unshift('<span class="tag ideal t' + l.ia + '" title="Hard criteria: ' + (l.ia === 3 ? "all pass" : l.ia === 2 ? "none fails, some unknown" : "exactly one fails (see the X-Ray)") + '"><i>' + ["", "near miss", "possible", "MATCH"][l.ia] + " · " + l.iz + "/5 wishes evidenced</i></span>");
+    if (S.f.ideal && l.ia >= 1) tags.unshift('<span class="tag ideal t' + l.ia + '" title="Hard criteria: ' + (l.ia === 4 ? "every criterion passes" : l.ia === 3 ? "all must-haves pass; some wishes not evidenced" : l.ia === 2 ? "none fails, some unknown" : "exactly one fails (see the X-Ray)") + '"><i>' + IDEAL_LABEL[l.ia] + " · " + l.iz + "/5 wishes evidenced</i></span>");
     if (L.isCut(l)) tags.push('<span class="tag cut"><i>price cut</i></span>');
     if (isNew(l)) tags.push('<span class="tag new"><i>new</i></span>');
     if (l.tw) tags.push('<span class="tag weak" title="Same district, area, price and place seen in other postings"><i>posted ' + (l.tw + 1) + "×</i></span>");
@@ -112,7 +113,8 @@
 
   function renderList() {
     compute(); renderHist();
-    $("resultsHead").textContent = visible.length + (visible.length === 1 ? " listing" : " listings");
+    $("resultsHead").textContent = visible.length + (visible.length === 1 ? " listing" : " listings") +
+      (S.f.ideal ? " · " + visible.filter((l) => l.ia === 4).length + " ideal" : "");
     const shown = visible.slice(0, S.shown);
     $("results").innerHTML = shown.length ? shown.map(cardHTML).join("") :
       '<li class="empty">No listings match. Coverage is limited — see <button class="btn btn-ghost" type="button" data-cov="1"><span>Coverage</span></button> for where data exists.</li>';
@@ -149,7 +151,7 @@
         D.ideal.zones.cells.forEach((z) => {
           const hot = z[2] > 0, warm = z[3] > 0;
           const r = window.L.rectangle([[z[0], z[1]], [z[0] + c, z[1] + c]], { weight: hot || warm ? 1 : 0, color: "#ff00ff", fillColor: hot ? "#ff00ff" : warm ? "#ff9900" : "#00ffff", fillOpacity: hot ? 0.5 : warm ? 0.4 : 0.1, interactive: hot || warm });
-          if (hot || warm) r.bindTooltip(z[2] + " match, " + z[3] + " possible parcel(s) here (~2 km cell)");
+          if (hot || warm) r.bindTooltip(z[2] + " ideal, " + z[3] + " candidate parcel(s) here (~2 km cell)");
           r.addTo(layerI);
         });
         (D.ideal.anchors || []).forEach((an) => window.L.circle([an.lat, an.lon], { radius: an.radius_km * 1000, color: "#ff9900", weight: 1, dashArray: "4 4", fillOpacity: 0.04 })
@@ -232,7 +234,7 @@
     if (!dt.xi || !(l.ia >= 1)) return "";
     const mark = { pass: "✓", fail: "✗", unknown: "?" };
     const rows = dt.xi.map((k) => '<li class="ic ' + k[1] + '"><b>' + mark[k[1]] + " " + L.esc(k[0]) + (k[3] ? "" : " <small>(wish)</small>") + "</b><br>" + L.esc(k[2]) + "</li>").join("");
-    return '<h3 class="sec">✦ ' + L.esc((D.ideal && D.ideal.name) || "Ideal") + " checklist · " + ["", "near miss", "possible", "MATCH"][l.ia] + '</h3><ul class="factors ideal-list">' + rows + "</ul>" +
+    return '<h3 class="sec">✦ ' + L.esc((D.ideal && D.ideal.name) || "Ideal") + " checklist · " + IDEAL_LABEL[l.ia] + '</h3><ul class="factors ideal-list">' + rows + "</ul>" +
       '<p class="foot">Pass, fail or unknown: unknown means the ad does not say, not that it is bad. A view, water, soil and tourism demand cannot be measured from this data.</p>';
   }
   function spark(h, unit) {

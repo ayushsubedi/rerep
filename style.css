@@ -186,6 +186,7 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; } th, td { text
 .leaflet-popup-content .btn { display: block; min-height: 36px; padding: 2px 8px; text-align: left; }
 
 /* ideal finder */
+.tag.ideal.t4 { border-color: #5dff9b; color: #000; background: #5dff9b; }
 .tag.ideal.t3 { border-color: var(--magenta); color: #fff; background: rgba(255,0,255,.28); }
 .tag.ideal.t2 { border-color: var(--orange); color: var(--orange); }
 .tag.ideal.t1 { border-color: var(--line-ui); color: var(--chrome-dim); }
