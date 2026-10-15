@@ -134,6 +134,14 @@ button, input, select { font: inherit; color: inherit; letter-spacing: inherit; 
 @media (min-width: 901px) {
   .drawer { right: auto; left: 0; width: max(380px, 46vw); border-right: 2px solid var(--cyan); border-left: 0; }
 }
+/* wide screens: three columns, list | X-Ray | map, so you can click from parcel to parcel without losing the list or the map */
+@media (min-width: 1180px) {
+  body.sel-open .split { grid-template-columns: 330px 420px 1fr; }
+  body.sel-open .list-pane { grid-column: 1; padding: 12px 10px 80px; }
+  body.sel-open .map-pane { grid-column: 3; }
+  body.sel-open .drawer { left: 330px; width: 420px; border-left: 2px solid var(--cyan); }
+  body.sel-open .list-pane .hist { display: none; }
+}
 .drawer-body, .modal-body { padding: 14px 16px 40px; }
 .drawer h2 { font-size: 20px; color: var(--cyan); text-shadow: 0 0 5px rgba(0,255,255,.5); margin-bottom: 4px; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 12px 0; font-size: 14px; } .kv dt { color: var(--chrome-dim); } .kv dd { margin: 0; }

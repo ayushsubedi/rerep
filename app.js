@@ -188,6 +188,7 @@
     drawMarkers();
   }
   /** The selected listing gets its own pin on a separate layer, so it stays visible even when clustering hides its marker. */
+  function settleMap() { if (map) setTimeout(() => map.invalidateSize(), 60); }       // the map column changes width when the X-Ray opens or closes
   function pinSelected() {
     if (!layerS) return;
     layerS.clearLayers();
@@ -218,9 +219,10 @@
   }
   function openDrawer(id, fromMap) {
     const l = byId.get(id); if (!l) return;
-    S.lastFocus = document.activeElement; S.sel = id;
+    if ($("drawer").hidden) S.lastFocus = document.activeElement;
+    S.sel = id; updateStepper(id);
     $("dBody").innerHTML = '<h2 id="dTitle">' + L.esc(l.t) + '</h2><p class="foot" role="status">Loading details…</p>';
-    $("drawer").hidden = false; $("dClose").focus();
+    $("drawer").hidden = false; document.body.classList.add("sel-open"); settleMap(); $("dClose").focus();
     loadDetail([id]).then(() => { if (S.sel === id) renderDrawer(id, fromMap); },
       () => { if (S.sel === id) $("dBody").insertAdjacentHTML("beforeend", '<p class="empty">Could not load the details. Check your connection and try again.</p>'); });
   }
@@ -251,8 +253,21 @@
     pinSelected(); showOnMap(l);
     pushHash();
   }
+  /** Step through the list as currently filtered and sorted. Beyond the rendered page it loads the next page first. */
+  function step(dir) {
+    if (!S.sel) return;
+    const i = visible.findIndex((l) => l.id === S.sel), j = i + dir;
+    if (i < 0 || j < 0 || j >= visible.length) return;
+    if (j >= S.shown) { S.shown = Math.min(visible.length, j + 1 + PAGE); renderList(); }
+    openDrawer(visible[j].id, true);
+  }
+  function updateStepper(id) {
+    const i = visible.findIndex((l) => l.id === id);
+    $("dPos").textContent = i < 0 ? "" : (i + 1) + " / " + visible.length;
+    $("dPrev").disabled = i <= 0; $("dNext").disabled = i < 0 || i >= visible.length - 1;
+  }
   function closeDrawer() {
-    $("drawer").hidden = true; S.sel = null; pinSelected(); document.querySelectorAll(".card.sel").forEach((c) => c.classList.remove("sel"));
+    $("drawer").hidden = true; document.body.classList.remove("sel-open"); settleMap(); S.sel = null; pinSelected(); document.querySelectorAll(".card.sel").forEach((c) => c.classList.remove("sel"));
     if (S.lastFocus && document.contains(S.lastFocus)) S.lastFocus.focus(); pushHash();
   }
 
@@ -416,6 +431,11 @@
     $("btnWatch").addEventListener("click", () => openModal("watchlist", watchHTML()));
     $("tabList").addEventListener("click", () => { document.body.classList.remove("show-map"); $("tabList").classList.add("on"); $("tabMap").classList.remove("on"); });
     $("tabMap").addEventListener("click", () => { document.body.classList.add("show-map"); $("tabMap").classList.add("on"); $("tabList").classList.remove("on"); if (map) setTimeout(() => map.invalidateSize(), 50); });
+    $("dPrev").addEventListener("click", () => step(-1)); $("dNext").addEventListener("click", () => step(1));
+    document.addEventListener("keydown", (e) => {
+      if ($("drawer").hidden || $("modal").open || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || ""))) return;
+      if (e.key === "j" || e.key === "J") { e.preventDefault(); step(1); } else if (e.key === "k" || e.key === "K") { e.preventDefault(); step(-1); }
+    });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("drawer").hidden && !$("modal").open) closeDrawer(); });
     document.addEventListener("click", (e) => {
       const t = e.target.closest("[data-star],[data-cmp],[data-open],[data-showmap],[data-cov],[data-export],.card"); if (!t) return;
@@ -424,7 +444,7 @@
       else if (t.dataset.open) { if ($("modal").open) $("modal").close(); openDrawer(t.dataset.open, false); }
       else if (t.dataset.showmap) {                      // phones: leave the X-Ray, open the map tab on this listing, keep its pin
         const id = t.dataset.showmap, l = byId.get(id);
-        $("drawer").hidden = true; $("tabMap").click();
+        $("drawer").hidden = true; document.body.classList.remove("sel-open"); $("tabMap").click();
         setTimeout(() => { if (map) { map.invalidateSize(); S.sel = id; pinSelected(); showOnMap(l); } }, 80);
       }
       else if (t.dataset.cov) openModal("coverage", coverageHTML());
