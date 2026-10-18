@@ -59,6 +59,7 @@
   /** "New" means the PORTAL dated the ad within a week. Being first seen by us recently only means we found it recently:
    *  a sweep can discover hundreds of old ads in one day. No posted date => never called new. */
   function isNewAd(l, today) {
+    if (l.pk === "updated" || l.pk === "relisted") return false;       // a date the ad was touched is not the date it was posted
     const n = daysSince(l.po, today);
     return n != null && n <= 7;
   }
@@ -103,7 +104,7 @@
       }
       if (l.dup && !f.dups) return false;
       if (f.cut && !isCut(l)) return false;
-      if (f.ideal && !(l.ia >= 1)) return false;
+      if (f.since && !(l.fs && l.fs > f.since)) return false;       // first listed after the visitor's previous visit
       if (f.bounds) {
         if (l.lat == null) return false;
         const b = f.bounds;
@@ -119,7 +120,6 @@
     total: function (a, b) { return nullsLast(a.tot, b.tot, 1); },
     "-area": function (a, b) { return nullsLast(a.a, b.a, -1); },
     new: function (a, b) { return (b.fs || "").localeCompare(a.fs || ""); },
-    ideal: function (a, b) { return ((b.ia || 0) - (a.ia || 0)) || ((b.iz || 0) - (a.iz || 0)) || nullsLast(a.p, b.p, 1); },
     value: function (a, b) { return nullsLast(a.c && a.c.p, b.c && b.c.p, 1); }
   };
   function nullsLast(x, y, dir) {
@@ -145,7 +145,7 @@
   }
 
   // -- URL state -----------------------------------------------------------------------------
-  const KEYS = ["q", "dis", "src", "cls", "unit", "pmin", "pmax", "aunit", "amin", "amax", "road", "age", "fresh", "cut", "dups", "ideal", "sort"];
+  const KEYS = ["q", "dis", "src", "cls", "unit", "pmin", "pmax", "aunit", "amin", "amax", "road", "age", "fresh", "cut", "dups", "sort"];
   function toHash(f) {
     const p = [];
     KEYS.forEach(function (k) { if (f[k] !== undefined && f[k] !== "" && f[k] !== false && f[k] !== null) p.push(k + "=" + encodeURIComponent(f[k] === true ? "1" : f[k])); });
@@ -158,7 +158,7 @@
       const i = kv.indexOf("="), k = kv.slice(0, i);
       if (KEYS.indexOf(k) < 0) return;               // ignore unknown keys: the hash is user-controlled input
       const v = decodeURIComponent(kv.slice(i + 1));
-      f[k] = (k === "fresh" || k === "cut" || k === "dups" || k === "ideal") ? v === "1" : v;
+      f[k] = (k === "fresh" || k === "cut" || k === "dups") ? v === "1" : v;
     });
     return f;
   }
@@ -203,5 +203,12 @@
   /** Only http(s) links may be rendered as hrefs: data comes from scraped sources. */
   function safeUrl(u) { return /^https?:\/\//i.test(u || "") ? u : "#"; }
 
-  return { histogram, unitTable, perUnit, toPps, fmtMoney, areaNotation, daysSince, isNewAd, isCut, compsLabel, filter, sort, toHash, parseHash, toCSV, toGeoJSON, toKML, esc, safeUrl };
+  // -- 'before you pay' list (verify.py builds the items; this only renders them) ----------------------------------------------
+  var WHO = { seller: "seller", office: "land office", site: "on site", you: "you" };
+  function askHTML(ask, cls) {
+    return (ask || []).map(function (a) {
+      return '<li><span class="who">' + esc(WHO[a.o] || a.o) + "</span> " + esc(a.a) + ' <span class="' + (cls || "why") + '">Because: ' + esc(a.w) + "</span></li>";
+    }).join("");
+  }
+  return { askHTML, histogram, unitTable, perUnit, toPps, fmtMoney, areaNotation, daysSince, isNewAd, isCut, compsLabel, filter, sort, toHash, parseHash, toCSV, toGeoJSON, toKML, esc, safeUrl };
 });

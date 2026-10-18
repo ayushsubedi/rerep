@@ -5,7 +5,7 @@
   const L = window.JaggaLib, D = window.JAGGA, T = L.unitTable(D.meta.units);
   const $ = (id) => document.getElementById(id);
   const PAGE = 40;
-  const IDEAL_LABEL = ["", "near miss", "possible", "must-haves met", "IDEAL"];
+  const F = window.JaggaFinder, FLAGS = D.meta.flags || [];
 
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -14,7 +14,8 @@
 
   const S = { f: { unit: "aana", aunit: "aana", sort: "price" }, cmp: [], shown: PAGE, sel: null, watch: store.get("jagga.watch", {}), bounds: null, fitNext: true, lastFocus: null };
   const byId = new Map(D.listings.map((l) => [l.id, l]));
-  let visible = [], map = null, layerI = null, layerS = null, layerL = null, layerC = null, layerB = null, markers = new Map(), canvas = null;
+  let FR = null, FRMAP = new Map(), PLACES = null, placesP = null, SINCE = null;       // the finder's last run, by listing id; the places picker's data (loaded on demand)
+  let visible = [], map = null, layerA = null, layerS = null, layerL = null, layerC = null, layerB = null, markers = new Map(), canvas = null;
 
   // ---------- detail shards: X-Ray text and price history load on demand (d/<first id char>.js) ----------
   const DETAIL = {}, shardP = {};
@@ -35,7 +36,8 @@
   // ---------- helpers ----------
   const UNIT_LABEL = { aana: "aana", ropani: "ropani", kattha: "kattha", dhur: "dhur", bigha: "bigha", sqft: "sq ft", sqm: "m²" };
   const pctColor = (c) => (!c ? "#7a7391" : c.p < 25 ? "#00ffff" : c.p > 75 ? "#ff00ff" : "#b48cff");
-  function priceText(l) { return l.p == null ? "Price n/a" : L.fmtMoney(L.perUnit(l.p, S.f.unit, T)); }
+  function priceText(l) { return l.p != null ? L.fmtMoney(L.perUnit(l.p, S.f.unit, T)) : l.tot ? L.fmtMoney(l.tot) + " total" : "Price n/a"; }   // area unreadable: the total is the price
+  const perText = (l) => (l.p != null ? " <small>/" + UNIT_LABEL[S.f.unit] + "</small>" : "");
   function areaText(l) {
     if (l.a == null) return "area n/a";
     const sqm = Math.round(l.a).toLocaleString("en-US") + " m²";
@@ -52,25 +54,28 @@
     f.q = $("q").value; f.dis = $("fDis").value; f.src = $("fSrc").value; f.unit = $("fUnit").value;
     f.pmin = $("fPmin").value.replace(/,/g, ""); f.pmax = $("fPmax").value.replace(/,/g, "");
     f.aunit = $("fAunit").value; f.amin = $("fAmin").value; f.amax = $("fAmax").value; f.road = $("fRoad").value;
-    f.age = $("fAge").value; f.cut = $("fCut").checked; f.dups = $("fDups").checked; f.ideal = $("fIdeal").checked; f.sort = $("fSort").value;
+    f.age = $("fAge").value; f.cut = $("fCut").checked; f.dups = $("fDups").checked; f.sort = $("fSort").value;
   }
   function writeUI() {
     const f = S.f;
     $("q").value = f.q || ""; $("fDis").value = f.dis || ""; $("fSrc").value = f.src || ""; $("fUnit").value = f.unit || "aana";
     $("fPmin").value = f.pmin || ""; $("fPmax").value = f.pmax || ""; $("fAunit").value = f.aunit || "aana";
     $("fAmin").value = f.amin || ""; $("fAmax").value = f.amax || ""; $("fRoad").value = f.road || "";
-    $("fAge").value = f.age || ""; $("fCut").checked = !!f.cut; $("fDups").checked = !!f.dups; $("fIdeal").checked = !!f.ideal; $("fSort").value = f.sort || "price";
+    $("fAge").value = f.age || ""; $("fCut").checked = !!f.cut; $("fDups").checked = !!f.dups; $("fSort").value = f.sort || "price";
   }
   function hashState() { const m = /(?:^|&)l=([0-9a-f]+)/.exec(location.hash.slice(1)); return m ? m[1] : null; }
   function pushHash() {
-    const h = L.toHash(S.f) + (S.sel ? (L.toHash(S.f) ? "&" : "") + "l=" + S.sel : "");
+    const fp = F.activeIds(S.profile, FLAGS).length ? "fp=" + F.encode(S.profile) : "";          // the finder rides in the link only when it has criteria
+    const h = [L.toHash(S.f), S.sel ? "l=" + S.sel : "", fp].filter(Boolean).join("&");
     history.replaceState(null, "", h ? "#" + h : location.pathname + location.search);
   }
 
   // ---------- list ----------
   function compute() {
     const f = Object.assign({}, S.f, { bounds: $("fMapOnly").checked && S.bounds ? S.bounds : null });
-    visible = L.sort(L.filter(D.listings, f, T), S.f.sort || "price");
+    let rows = L.filter(D.listings, f, T);
+    if (FR) rows = rows.filter((l) => { const it = FRMAP.get(l.id); return it && S.tiers[it.tier]; });
+    visible = S.f.sort === "fit" && FR ? rows.sort((a, b) => F.byFit(FRMAP.get(a.id), FRMAP.get(b.id))) : L.sort(rows, S.f.sort === "fit" ? "price" : S.f.sort || "price");
   }
   function cardHTML(l) {
     const c = l.c, tags = [];
@@ -78,20 +83,21 @@
     if (c && c.rel === "weak") tags.push('<span class="tag weak" title="Compared with the whole district: locations differ"><i>weak comps</i></span>');
     if (l.pc === "low") tags.push('<span class="tag weak" title="Low confidence: see the X-Ray for why"><i>price uncertain</i></span>');
     if (l.pb === "total_reread") tags.push('<span class="tag weak" title="The ad put a total price in the per-unit field; it has been read as a total"><i>read as total</i></span>');
-    if (S.f.ideal && l.ia >= 1) tags.unshift('<span class="tag ideal t' + l.ia + '" title="Hard criteria: ' + (l.ia === 4 ? "every criterion passes" : l.ia === 3 ? "all must-haves pass; some wishes not evidenced" : l.ia === 2 ? "none fails, some unknown" : "exactly one fails (see the X-Ray)") + '"><i>' + IDEAL_LABEL[l.ia] + " · " + l.iz + "/5 wishes evidenced</i></span>");
+    const fit = FRMAP.get(l.id);
+    if (fit && fit.tier) tags.unshift('<span class="tag ideal t' + fit.tier + '" title="' + (fit.tier === 3 ? "every must-have passes" : fit.tier === 2 ? "nothing fails, some must-haves are unknown (the ad does not say)" : "exactly one must-have fails: see the checklist") + '"><i>' + F.TIER[fit.tier] + (fit.wishTotal ? " · " + fit.wishes + "/" + fit.wishTotal + " wishes" : "") + "</i></span>");
     if (L.isCut(l)) tags.push('<span class="tag cut"><i>price cut</i></span>');
     if (isNew(l)) tags.push('<span class="tag new"><i>new</i></span>');
-    if (l.tw) tags.push('<span class="tag weak" title="Same district, area, price and place seen in other postings"><i>posted ' + (l.tw + 1) + "×</i></span>");
+    if (l.tw) tags.push('<span class="tag weak" title="Same district, area, price and place as other postings, so probably the same plot. Photos and contacts are not used, so this cannot be proven: two plots in one subdivision can match too."><i>likely posted ' + (l.tw + 1) + "×</i></span>");
     const age = L.daysSince(l.po);
-    if (age != null && age > 180) tags.push('<span class="tag weak" title="The portal dates this ad long ago; it may no longer be available"><i>ad ' + (age > 365 ? Math.round(age / 365 * 10) / 10 + "y" : Math.round(age / 30) + "mo") + " old</i></span>");
+    if (age != null && age > 180) tags.push('<span class="tag weak" title="The portal dates this ad long ago and still lists it; confirm it is still for sale"><i>ad ' + (age > 365 ? Math.round(age / 365 * 10) / 10 + "y" : Math.round(age / 30) + "mo") + " old</i></span>");
     const place = placeText(l);
     const starred = !!S.watch[l.id];
     return '<li class="card' + (S.sel === l.id ? " sel" : "") + '" data-id="' + l.id + '">' +
-      '<div class="price">' + L.esc(priceText(l)) + (l.p != null ? " <small>/" + UNIT_LABEL[S.f.unit] + "</small>" : "") + "</div>" +
+      '<div class="price">' + L.esc(priceText(l)) + perText(l) + "</div>" +
       '<span class="card-actions"><button class="cmp" type="button" data-cmp="' + l.id + '" aria-pressed="' + (S.cmp.indexOf(l.id) >= 0) + '" aria-label="' + (S.cmp.indexOf(l.id) >= 0 ? "Remove from comparison" : "Add to comparison (up to 3)") + '">' + (S.cmp.indexOf(l.id) >= 0 ? "✓ compare" : "compare") + "</button> " +
       '<button class="star" type="button" data-star="' + l.id + '" aria-pressed="' + starred + '" aria-label="' + (starred ? "Remove from watchlist" : "Add to watchlist") + '">' + (starred ? "★" : "☆") + "</button></span>" +
       '<h3><button type="button" data-open="' + l.id + '">' + L.esc(l.t) + "</button></h3>" +
-      '<div class="facts"><span>' + L.esc(areaText(l)) + "</span>" + (l.tot ? "<span>" + L.esc(L.fmtMoney(l.tot)) + " total</span>" : "") +
+      '<div class="facts"><span>' + L.esc(areaText(l)) + "</span>" + (l.tot && l.p != null ? "<span>" + L.esc(L.fmtMoney(l.tot)) + " total</span>" : "") +
       (l.road ? "<span>" + l.road + " ft road</span>" : "") + '<span class="dim">' + L.esc(place) + "</span>" +
       '<span class="dim">' + L.esc(l.src) + (l.fs ? " · seen " + ago(l.fs) : "") + "</span></div>" +
       (tags.length ? '<div class="tags">' + tags.join("") + "</div>" : "") + "</li>";
@@ -114,7 +120,7 @@
   function renderList() {
     compute(); renderHist();
     $("resultsHead").textContent = visible.length + (visible.length === 1 ? " listing" : " listings") +
-      (S.f.ideal ? " · " + visible.filter((l) => l.ia === 4).length + " ideal" : "");
+      (FR ? " · " + FR.counts[3] + " match my finder" : "");
     const shown = visible.slice(0, S.shown);
     $("results").innerHTML = shown.length ? shown.map(cardHTML).join("") :
       '<li class="empty">No listings match. Coverage is limited — see <button class="btn btn-ghost" type="button" data-cov="1"><span>Coverage</span></button> for where data exists.</li>';
@@ -142,23 +148,8 @@
       if (c.path) window.L.polyline(c.path, { color: "#ff9900", weight: 3, dashArray: "6 6" }).bindPopup(tip).addTo(layerC);
       window.L.circle([c.lat, c.lon], { radius: (c.radius_km || 0) * 1000, color: "#ff9900", weight: 1, fillOpacity: 0.06 }).bindPopup(tip).addTo(layerC);
     });
-    if (D.ideal) {
-      $("idealChip").hidden = false;
-      if (D.ideal.zones) {
-        $("lyIWrap").hidden = false;
-        layerI = window.L.layerGroup();
-        const c = D.ideal.zones.cell;
-        D.ideal.zones.cells.forEach((z) => {
-          const hot = z[2] > 0, warm = z[3] > 0;
-          const r = window.L.rectangle([[z[0], z[1]], [z[0] + c, z[1] + c]], { weight: hot || warm ? 1 : 0, color: "#ff00ff", fillColor: hot ? "#ff00ff" : warm ? "#ff9900" : "#00ffff", fillOpacity: hot ? 0.5 : warm ? 0.4 : 0.1, interactive: hot || warm });
-          if (hot || warm) r.bindTooltip(z[2] + " ideal, " + z[3] + " candidate parcel(s) here (~2 km cell)");
-          r.addTo(layerI);
-        });
-        (D.ideal.anchors || []).forEach((an) => window.L.circle([an.lat, an.lon], { radius: an.radius_km * 1000, color: "#ff9900", weight: 1, dashArray: "4 4", fillOpacity: 0.04 })
-          .bindTooltip(L.esc(an.name) + ": " + an.radius_km + " km").addTo(layerI));
-      }
-    }
-    window.JAGGA_MAP = map; map.on("zoomend", drawMarkers);
+    layerA = window.L.layerGroup().addTo(map); window.JAGGA_ANCHORS = layerA;       // exposed for the browser test, like JAGGA_MAP
+    window.JAGGA_MAP = map; map.on("zoomend", drawMarkers); map.on("click", onMapClick);
     map.on("moveend", () => { const b = map.getBounds(); S.bounds = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()]; if ($("fMapOnly").checked && !S.fitNext) { S.shown = PAGE; renderList(); } S.fitNext = false; });
   }
   // ---------- map: distance clustering, recomputed on zoom (no library) ----------
@@ -230,11 +221,13 @@
   }
 
   // ---------- drawer ----------
-  function idealHTML(dt, l) {
-    if (!dt.xi || !(l.ia >= 1)) return "";
+  /** The listing under MY finder: every criterion I switched on, pass / fail / unknown, with the ad's evidence. */
+  function finderCheck(l) {
+    const it = FRMAP.get(l.id);
+    if (!it || !it.results.length) return "";
     const mark = { pass: "✓", fail: "✗", unknown: "?" };
-    const rows = dt.xi.map((k) => '<li class="ic ' + k[1] + '"><b>' + mark[k[1]] + " " + L.esc(k[0]) + (k[3] ? "" : " <small>(wish)</small>") + "</b><br>" + L.esc(k[2]) + "</li>").join("");
-    return '<h3 class="sec">✦ ' + L.esc((D.ideal && D.ideal.name) || "Ideal") + " checklist · " + IDEAL_LABEL[l.ia] + '</h3><ul class="factors ideal-list">' + rows + "</ul>" +
+    const rows = it.results.map((x) => '<li class="ic ' + x.s + '"><b>' + mark[x.s] + " " + L.esc(x.label) + (x.must ? "" : " <small>(nice to have)</small>") + "</b><br>" + L.esc(x.e) + "</li>").join("");
+    return '<h3 class="sec">◎ My finder · ' + (F.TIER[it.tier] || "outside it") + '</h3><ul class="factors ideal-list">' + rows + "</ul>" +
       '<p class="foot">Pass, fail or unknown: unknown means the ad does not say, not that it is bad. A view, water, soil and tourism demand cannot be measured from this data.</p>';
   }
   function spark(h, unit) {
@@ -245,6 +238,7 @@
   }
   function openDrawer(id, fromMap) {
     const l = byId.get(id); if (!l) return;
+    if (!$("finder").hidden) hideFinder();                 // the finder and the X-Ray share the left side: opening a plot puts the finder away (its criteria stay)
     if ($("drawer").hidden) S.lastFocus = document.activeElement;
     S.sel = id; updateStepper(id);
     $("dBody").innerHTML = '<h2 id="dTitle">' + L.esc(l.t) + '</h2><p class="foot" role="status">Loading details…</p>';
@@ -264,12 +258,13 @@
     const approx = l.prec === "palika" ? " (palika centre only)" : l.prec === "locality" ? " (approximate)" : "";
     $("dBody").innerHTML =
       '<h2 id="dTitle">' + L.esc(l.t) + "</h2>" +
-      '<div class="price">' + L.esc(priceText(l)) + " <small>/" + UNIT_LABEL[S.f.unit] + "</small></div>" +
+      '<div class="price">' + L.esc(priceText(l)) + perText(l) + "</div>" +
       '<dl class="kv"><dt>total</dt><dd>' + L.esc(l.tot ? L.fmtMoney(l.tot) : "n/a") + "</dd><dt>area</dt><dd>" + L.esc(areaText(l)) + "</dd>" +
       (l.p != null ? per : "") + "<dt>place</dt><dd>" + L.esc(placeText(l)) + L.esc(approx) + "</dd>" +
       (l.po ? "<dt>ad dated</dt><dd>" + L.esc(l.po) + "</dd>" : "") + (l.fac ? "<dt>facing</dt><dd>" + L.esc(l.fac) + "</dd>" : "") + "<dt>first seen</dt><dd>" + L.esc(l.fs || "?") + "</dd><dt>last seen</dt><dd>" + L.esc(l.ls || "?") + "</dd></dl>" +
-      idealHTML(dt, l) +
+      finderCheck(l) +
       '<h3 class="sec">X-Ray · each factor cited, none estimated</h3><ul class="factors">' + ok + no + "</ul>" +
+      (dt.ask && dt.ask.length ? '<details class="ask"><summary>Before you pay: ' + dt.ask.length + " things to ask or check</summary><ol class=\"factors\">" + L.askHTML(dt.ask) + "</ol></details>" : "") +
       (dt.h && dt.h.length > 1 ? '<h3 class="sec">Price history (NPR/m²)</h3>' + spark(dt.h) : "") +
       '<p><a class="btn btn-primary" href="' + L.esc(L.safeUrl(l.url)) + '" target="_blank" rel="noopener noreferrer"><span>View original ad ↗</span></a> ' +
       '<button class="btn btn-outline" type="button" data-star="' + l.id + '" aria-pressed="' + !!S.watch[l.id] + '"><span>' + (S.watch[l.id] ? "★ Watching" : "☆ Watch") + "</span></button> " +
@@ -329,6 +324,7 @@
     const m = D.meta;
     return "<p>A personal screening tool for Nepali land. Listings are gathered from public classifieds portals; each links back to the original ad. Contact details, photos and full descriptions are not republished.</p>" +
       '<h3 class="sec">How to read it</h3><p>There is no single score. Each listing has an X-Ray of separate, cited factors. A factor with no data is shown as <b>missing</b>, never estimated. “Comps” are other listings of similar size, nearest first (same palika, then radius, then district); a district-wide comparison is marked <b>weak</b>.</p>' +
+      '<h3 class="sec">My finder</h3><p>Say what you want: districts, size, budget, a road, ground elevation, places to be near (a palika, a landmark, or any point you click on the map), distance to a city, how recently posted, price against comparable ads, and what the ad says (a view, farming, water…). Each criterion is a <b>must</b> or a <b>nice to have</b> and is judged pass, fail or <b>unknown</b>; the funnel shows where ads drop out and how many more would match if you relaxed one. Your criteria stay in this browser. There is no score.</p>' +
       '<h3 class="sec">Units</h3><p>Every price is stored as NPR per m² and only shown in the unit you pick. Hill and Terai units are not interchangeable by eye: 1 aana ≈ 1.88 dhur. Positional notation like 2-10-5 is shown only where the district’s system is known.</p>' +
       '<h3 class="sec">Government valuation</h3><p>' + (m.govt_valuation_rows ? m.govt_valuation_rows + " real rate rows are loaded" + (m.govt_valuation_sources.indexOf("news") >= 0 ? ", <b>partial</b>: taken from a news report of the committee’s decision and covering only some Kathmandu-valley road segments. Everywhere else the comparison is shown as missing." : ".") : "<b>No real government minimum-valuation data is loaded yet</b>, so that comparison is shown as missing everywhere.") + " Minimum valuations are set per district by a committee chaired by the Chief District Officer.</p>" +
       '<h3 class="sec">Not advice</h3><p>This is a screening tool. Check the lalpurja, the napi naksa, a physical visit with the neighbours, and the current malpot rate before paying anything.</p>' +
@@ -357,7 +353,7 @@
 
   // ---------- events ----------
   function toggleWatch(id) {
-    if (S.watch[id]) delete S.watch[id]; else S.watch[id] = "watching";
+    if (S.watch[id]) delete S.watch[id]; else { S.watch[id] = "watching"; loadDetail([id]).catch(() => {}); }          // saved now, so the shortlist works offline later
     store.set("jagga.watch", S.watch); $("watchCount").textContent = Object.keys(S.watch).length; renderList();
     if (S.sel === id) openDrawer(id);
   }
@@ -405,14 +401,14 @@
       const l = byId.get(id), dt = detailOf(id), note = store.get("jagga.note." + id, "");
       const ok = dt.x.ok.map((f) => "<li><b>" + L.esc(f.f) + "</b>: " + L.esc(f.d) + "</li>").join("");
       const no = dt.x.no.map((m) => "<li class=\"no\"><b>" + L.esc(m.f) + "</b>: missing, " + L.esc(m.w) + "</li>").join("");
-      return "<section><h2>" + L.esc(l.t) + "</h2><p class=\"big\">" + L.esc(priceText(l)) + " /" + UNIT_LABEL[S.f.unit] + (l.tot ? " · total " + L.esc(L.fmtMoney(l.tot)) : "") + "</p>" +
+      return "<section><h2>" + L.esc(l.t) + "</h2><p class=\"big\">" + L.esc(priceText(l)) + (l.p != null ? " /" + UNIT_LABEL[S.f.unit] : "") + (l.tot && l.p != null ? " · total " + L.esc(L.fmtMoney(l.tot)) : "") + "</p>" +
         "<p>" + L.esc(areaText(l)) + " · " + L.esc(placeText(l)) + (l.road ? " · " + l.road + " ft road" : "") + (l.po ? " · ad dated " + L.esc(l.po) : "") + "</p>" +
-        "<ul>" + ok + no + "</ul>" + (note ? "<p class=\"note\"><b>My notes:</b> " + L.esc(note) + "</p>" : "") +
+        "<ul>" + ok + no + "</ul>" + (dt.ask && dt.ask.length ? "<h3>Before you pay: ask and check</h3><ol class=\"ask\">" + L.askHTML(dt.ask, "why") + "</ol>" : "") + (note ? "<p class=\"note\"><b>My notes:</b> " + L.esc(note) + "</p>" : "") +
         "<p class=\"src\">Original ad: " + L.esc(L.safeUrl(l.url)) + "</p></section>";
     }).join("");
     return "<!doctype html><meta charset=\"utf-8\"><title>Shortlist</title><style>body{font:13px/1.45 Georgia,serif;max-width:780px;margin:20px auto;padding:0 14px;color:#111}" +
       "h1{font:700 20px sans-serif}h2{font:700 15px sans-serif;margin:0}section{border-top:2px solid #111;padding:10px 0;break-inside:avoid}.big{font:700 17px sans-serif;margin:2px 0}" +
-      "ul{margin:6px 0;padding-left:18px}.no{color:#666}.note{background:#f3f3f3;padding:6px 8px}.src{font-size:11px;color:#444;word-break:break-all}.fine{font-size:11px;color:#444}</style>" +
+      "ul,ol{margin:6px 0;padding-left:18px}h3{font:700 13px sans-serif;margin:10px 0 2px}.who{font:700 10px sans-serif;text-transform:uppercase;border:1px solid #111;padding:0 4px;margin-right:4px}.why{display:block;color:#555;font-size:11px}.no{color:#666}.note{background:#f3f3f3;padding:6px 8px}.src{font-size:11px;color:#444;word-break:break-all}.fine{font-size:11px;color:#444}</style>" +
       "<h1>Land shortlist (" + ids.length + ")</h1><p class=\"fine\">Printed " + new Date().toISOString().slice(0, 10) + " from the Jaggasignal screening tool. Screening only, not advice: check the lalpurja, napi naksa, a site visit and the current malpot rate. Prices are asking prices.</p>" + rows;
   }
   function printShortlist() {
@@ -430,22 +426,203 @@
     else window.prompt("Copy this link:", location.href);
   }
 
+  // ---------- my finder: the panel, in the visitor's browser ----------
+  const fctx = () => ({ table: T, flags: FLAGS, today: new Date() });
+  function loadProfile() {
+    const m = /(?:^|&)fp=([A-Za-z0-9_-]+)/.exec(location.hash.slice(1)), raw = m ? m[1] : store.get("jagga.profile", "");
+    return raw ? F.decode(raw, FLAGS) : F.ensureRows(F.defaultProfile(), FLAGS);
+  }
+  function saveProfile() { store.set("jagga.profile", F.activeIds(S.profile, FLAGS).length ? F.encode(S.profile) : ""); }
+  function recomputeFinder() {
+    FR = S.fon && F.activeIds(S.profile, FLAGS).length ? F.run(D.listings, S.profile, fctx()) : null;
+    FRMAP = new Map(FR ? FR.items.map((it) => [it.l.id, it]) : []);
+    $("finderCount").textContent = FR ? "· " + FR.counts[3] + " match" : "";
+    drawAnchors();
+  }
+  /** The places chosen under "near": a circle each, so the radius is visible on the map. */
+  function drawAnchors() {
+    if (!layerA) return;
+    layerA.clearLayers();
+    const r = S.profile.rows.near;
+    if (!FR || !r || !r.on) return;
+    r.places.forEach((p) => window.L.circle([p.lat, p.lon], { radius: p.km * 1000, color: "#ff00ff", weight: 1, dashArray: "5 5", fillOpacity: 0.05, interactive: false }).addTo(layerA)
+      && window.L.circleMarker([p.lat, p.lon], { radius: 4, color: "#ff00ff", fillColor: "#ff00ff", fillOpacity: 1, interactive: false }).bindTooltip(L.esc(p.n) + ": " + p.km + " km", { permanent: false }).addTo(layerA));
+  }
+  function loadPlaces() {
+    if (PLACES) return Promise.resolve(PLACES);
+    if (!placesP) placesP = new Promise((res, rej) => {
+      const sc = document.createElement("script"); sc.src = "places.js";
+      sc.onload = () => { PLACES = window.JAGGA_PLACES || []; res(PLACES); };
+      sc.onerror = () => { placesP = null; rej(new Error("places unavailable")); };
+      document.head.appendChild(sc);
+    });
+    return placesP;
+  }
+  const placeLabel = (p) => p[0] + (p[1] === "landmark" ? " (landmark)" : p[1] ? " (" + p[1] + ")" : "");
+  const dname = (id) => (D.meta.districts.find((d) => d.district_id === id) || { district: id }).district;
+
+  function rowHTML(id) {
+    const r = S.profile.rows[id], def = F.ROWS.find((x) => x.id === id), flag = id.slice(0, 5) === "flag_" ? FLAGS.find((f) => "flag_" + f.k === id) : null;
+    const label = flag ? "The ad mentions: " + flag.label : def.label;
+    const num = (p, ph, w) => '<input class="num" inputmode="decimal" data-fr="' + id + '" data-fp="' + p + '" value="' + L.esc(r[p]) + '" placeholder="' + ph + '" aria-label="' + L.esc(label + ": " + (w || p)) + '">';
+    const unit = (p, opts) => '<select data-fr="' + id + '" data-fp="' + p + '" aria-label="unit">' + opts.map((u) => "<option" + (r[p] === u ? " selected" : "") + ">" + u + "</option>").join("") + "</select>";
+    let body = "";
+    if (id === "where") {
+      body = '<div class="chips">' + r.dis.map((d) => '<span class="pchip">' + L.esc(dname(d)) + '<button type="button" data-rmdis="' + L.esc(d) + '" aria-label="Remove ' + L.esc(dname(d)) + '">✕</button></span>').join("") + "</div>" +
+        '<select data-adddis="1" aria-label="Add a district"><option value="">Add a district…</option>' + D.meta.districts.filter((d) => r.dis.indexOf(d.district_id) < 0).map((d) => '<option value="' + L.esc(d.district_id) + '">' + L.esc(d.district) + " (" + d.n + ")</option>").join("") + "</select>";
+    } else if (id === "size") body = "from " + num("min", "min") + " to " + num("max", "max") + " " + unit("unit", ["ropani", "aana", "kattha", "dhur", "bigha", "sqm"]);
+    else if (id === "budget") body = "total up to Rs " + num("total", "any", "total price up to") + " &nbsp;or per " + unit("punit", ["aana", "ropani", "kattha", "dhur", "sqft", "sqm"]) + " up to Rs " + num("pmax", "any", "price per unit up to");
+    else if (id === "road") body = num("min", "ft") + " ft wide";
+    else if (id === "hills") body = "from " + num("min", "min") + " to " + num("max", "max") + " m above sea level" + '<span class="hint">Kathmandu valley floor ≈ 1,300 m; Chitwan plain ≈ 200 m; Nuwakot hills 700 m and up. Where only the palika is known, the whole palika must agree.</span>';
+    else if (id === "near") {
+      body = '<div class="chips">' + r.places.map((p, i) => '<span class="pchip">' + L.esc(p.n) + ' within <input class="num" inputmode="decimal" data-place="' + i + '" value="' + p.km + '" aria-label="Kilometres from ' + L.esc(p.n) + '"> km<button type="button" data-rmplace="' + i + '" aria-label="Remove ' + L.esc(p.n) + '">✕</button></span>').join("") + "</div>" +
+        '<input data-addplace="1" list="placeList" placeholder="type a place: Nuwakot Durbar, Bandipur, Pokhara…" aria-label="Add a place to be near" style="flex:1;min-width:180px"><datalist id="placeList"></datalist>' +
+        '<button class="btn btn-outline" type="button" data-pick="1" style="min-height:36px"><span>＋ point on the map</span></button>' +
+        '<span class="hint">Any of these places will do. Where an ad is located only to its palika centre, a tight radius is "unknown", not a guess.</span>';
+    } else if (id === "city") body = "within " + num("km", "km") + " km of a metropolitan or sub-metropolitan city";
+    else if (id === "fresh") body = "within " + num("days", "days") + " days, by the portal's own posting date" + '<span class="hint">Ads stay listed for years, so this hides ads that are still live. An ad that is only dated "updated" is unknown.</span>';
+    else if (id === "value") body = "at or below the " + num("pct", "25", "percentile") + "th percentile of comparable ads";
+    else if (id === "trust") body = "the price reading is high confidence (unit stated, area read cleanly)";
+    return '<section class="fr ' + (r.on ? "on" : "off") + '" data-row="' + id + '"><header><label><input type="checkbox" data-fr="' + id + '" data-fp="on"' + (r.on ? " checked" : "") + "> <b>" + L.esc(label) + "</b></label>" +
+      '<select data-fr="' + id + '" data-fp="must" aria-label="' + L.esc(label) + ' is a"><option value="1"' + (r.must ? " selected" : "") + '>must</option><option value="0"' + (r.must ? "" : " selected") + ">nice to have</option></select></header>" +
+      (body ? '<div class="body">' + body + "</div>" : "") + "</section>";
+  }
+  function renderFinderForm() {
+    const groups = {};
+    F.ROWS.forEach((r) => { (groups[r.group] = groups[r.group] || []).push(r.id); });
+    $("fBody").innerHTML = '<div id="fSum" class="f-sum"></div>' +
+      '<h3>Start from</h3><div class="presets">' + F.PRESETS.map((p) => '<button class="btn btn-outline" type="button" data-preset="' + p.id + '" title="' + L.esc(p.blurb) + '"><span>' + L.esc(p.label) + "</span></button>").join("") +
+      '<button class="btn btn-ghost" type="button" data-fclear="1"><span>Clear</span></button></div>' +
+      Object.keys(groups).map((g) => "<h3>" + L.esc(g) + "</h3>" + groups[g].map(rowHTML).join("")).join("") +
+      "<h3>What the ad says</h3>" + FLAGS.map((f) => rowHTML("flag_" + f.k)).join("") +
+      '<div class="f-foot"><label class="chip check"><input id="fOn" type="checkbox"' + (S.fon ? " checked" : "") + '><span>Filter the list with my finder</span></label>' +
+      '<button class="btn btn-outline" type="button" data-fcopy="1"><span>Copy link to this finder</span></button></div>' +
+      '<p class="foot">Your criteria stay in this browser. They travel only in a link you copy. There is no score: each criterion is pass, fail or unknown, and a "must" is what decides the tier.</p>';
+    renderFinderSummary();
+    if (S.profile.rows.near.on) loadPlaces().then((ps) => { const dl = $("placeList"); if (dl) dl.innerHTML = ps.map((p) => '<option value="' + L.esc(placeLabel(p)) + '">').join(""); }, () => {});
+  }
+  function renderFinderSummary() {
+    const el = $("fSum"); if (!el) return;
+    if (!FR) { el.innerHTML = '<div class="foot" style="border:0;margin:0;padding:0">' + (F.activeIds(S.profile, FLAGS).length ? "Turned off: the list shows every ad." : "Tick what matters to you below, or start from an example. The list narrows as you go and says why.") + "</div>"; return; }
+    const c = FR.counts, tier = (n, label) => '<button type="button" data-tier="' + n + '" aria-pressed="' + !!S.tiers[n] + '">' + label + " <b>" + c[n] + "</b></button>";
+    const max = Math.max(1, FR.funnel[0].left);
+    const gains = FR.relax.filter((x) => x.gain > 0 && FR.counts[3] < 200).sort((a, b) => b.gain - a.gain);
+    el.innerHTML = '<div class="tiers" role="group" aria-label="Show in the list">' + tier(3, "match") + tier(2, "possible") + tier(1, "near miss") + "</div>" +
+      (c[3] === 0 ? '<p class="judge" role="status" style="margin:8px 0 0">No ad meets every must-have. The funnel shows where they drop out' + (gains.length ? "; each button below shows how many more would match if you relaxed one." : ".") + "</p>" : "") +
+      '<details class="funnel" open><summary>Why this many? The must-haves, one after another</summary><ol>' +
+      FR.funnel.map((f, i) => '<li' + (f.left === 0 ? ' class="zero"' : "") + "><span>" + (i ? "+ " : "") + L.esc(f.label) + (f.unknown ? " <small>(" + f.unknown + " unknown)</small>" : "") + '</span><b>' + f.left + '</b><span class="bar" style="width:' + Math.max(1, Math.round(f.left / max * 100)) + '%"></span></li>').join("") + "</ol></details>" +
+      (gains.length ? '<div class="relax" role="group" aria-label="Relax a must-have">' + gains.map((g) => '<button class="btn btn-outline" type="button" data-relax="' + L.esc(g.id) + '" title="Make this a nice-to-have instead of a must"><span>Drop “' + L.esc(g.label) + "” → +" + g.gain + " match" + (g.gain === 1 ? "" : "es") + "</span></button>").join("") + "</div>" : "");
+  }
+  function finderChanged(structural) {
+    saveProfile(); recomputeFinder();
+    if (structural) renderFinderForm(); else renderFinderSummary();
+    S.shown = PAGE; S.fitNext = true; renderList();
+  }
+  function openFinder() {
+    if (!$("drawer").hidden) closeDrawer();
+    $("finder").hidden = false; document.body.classList.add("finder-open"); settleMap(); $("btnFinder").setAttribute("aria-expanded", "true"); renderFinderForm();
+    const first = $("fBody").querySelector("input,select"); if (first) first.focus();
+  }
+  function hideFinder() { $("finder").hidden = true; document.body.classList.remove("finder-open"); settleMap(); $("btnFinder").setAttribute("aria-expanded", "false"); }
+  function closeFinder() { hideFinder(); $("btnFinder").focus(); }
+  function addPlace(p) {
+    const r = S.profile.rows.near; if (r.places.length >= F.MAX_PLACES || r.places.some((x) => x.n === p.n && x.lat === p.lat && x.lon === p.lon)) return;
+    r.places.push(p); r.on = true; finderChanged(true);
+  }
+  function onMapClick(e) {
+    if (!S.pick) return;
+    S.pick = false; document.body.classList.remove("picking");
+    addPlace({ n: "a point on the map", lat: +e.latlng.lat.toFixed(4), lon: +e.latlng.lng.toFixed(4), km: 10 });
+    if (window.matchMedia("(max-width: 900px)").matches) $("tabList").click();
+    openFinder();
+  }
+  function startPick() {
+    S.pick = true; document.body.classList.add("picking"); hideFinder();
+    if (window.matchMedia("(max-width: 900px)").matches) $("tabMap").click();
+    $("resultsHead").textContent = "Click the map to place the point (Esc to cancel)";
+  }
+  function finderEvents() {
+    const root = $("fBody");
+    root.addEventListener("input", (e) => {
+      const t = e.target;
+      if (t.dataset.place !== undefined) { const p = S.profile.rows.near.places[+t.dataset.place]; if (p && +t.value > 0) { p.km = Math.min(500, +t.value); finderChanged(false); } return; }
+      if (!t.dataset.fr || t.type === "checkbox" || t.tagName === "SELECT") return;
+      S.profile.rows[t.dataset.fr][t.dataset.fp] = t.value; finderChanged(false);
+    });
+    root.addEventListener("change", (e) => {
+      const t = e.target;
+      if (t.id === "fOn") { S.fon = t.checked; store.set("jagga.fon", S.fon); finderChanged(false); return; }
+      if (t.dataset.adddis && t.value) { S.profile.rows.where.dis.push(t.value); S.profile.rows.where.on = true; finderChanged(true); return; }
+      if (t.dataset.addplace) {
+        const p = (PLACES || []).find((x) => placeLabel(x) === t.value);
+        if (p) { addPlace({ n: p[0], lat: p[2], lon: p[3], km: 15 }); const i = $("fBody").querySelector("[data-addplace]"); if (i) i.focus(); }
+        return;
+      }
+      if (!t.dataset.fr || (t.tagName === "INPUT" && t.type !== "checkbox")) return;          // typed values are taken on 'input'; redrawing on blur would eat the click that caused the blur
+      const row = S.profile.rows[t.dataset.fr], p = t.dataset.fp;
+      if (p === "on") row.on = t.checked; else if (p === "must") row.must = t.value === "1"; else row[p] = t.value;
+      finderChanged(p === "on");
+    });
+    root.addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      const d = b.dataset;
+      if (d.preset) { S.profile = F.applyPreset(d.preset, FLAGS); S.fon = true; store.set("jagga.fon", true); finderChanged(true); }
+      else if (d.fclear) { S.profile = F.ensureRows(F.defaultProfile(), FLAGS); finderChanged(true); }
+      else if (d.tier) { S.tiers[d.tier] = !S.tiers[d.tier]; renderFinderSummary(); S.shown = PAGE; renderList(); }
+      else if (d.relax) { S.profile.rows[d.relax].must = false; finderChanged(true); }
+      else if (d.rmdis) { const r = S.profile.rows.where; r.dis = r.dis.filter((x) => x !== d.rmdis); finderChanged(true); }
+      else if (d.rmplace) { S.profile.rows.near.places.splice(+d.rmplace, 1); finderChanged(true); }
+      else if (d.pick) startPick();
+      else if (d.fcopy) { pushHash(); copyLink(); }
+    });
+  }
+  /** Field mode: keep the shell, data and opened listings on the device, say so when offline, and save the details of starred plots before you go. */
+  function initOffline() {
+    if ("serviceWorker" in navigator && (location.protocol === "https:" || /^(localhost|127\.0\.0\.1)$/.test(location.hostname))) navigator.serviceWorker.register("sw.js").catch(() => {});
+    const note = () => {
+      const b = $("netBanner"); b.hidden = navigator.onLine;
+      b.textContent = navigator.onLine ? "" : "Offline: showing what was saved on this device (built " + D.meta.built_at + "). Listings you have opened and your watchlist work; map tiles and new ads need a connection.";
+    };
+    window.addEventListener("online", note); window.addEventListener("offline", note); note();
+    const starred = Object.keys(S.watch).filter((i) => byId.has(i));
+    if (navigator.onLine && starred.length) loadDetail(starred).catch(() => {});
+  }
+  /** "New since your last visit": by when WE first saw the ad, against the date of this browser's previous visit. The narrowing stays visible on the banner. */
+  function renderSince() {
+    const b = $("sinceBanner"), prev = SINCE; if (!prev) { b.hidden = true; return; }
+    const n = D.listings.filter((l) => l.fs && l.fs > prev && !l.dup).length, on = !!S.f.since;
+    b.hidden = !n; if (!n) return;
+    b.innerHTML = on ? "<span>Showing only the <b>" + n + "</b> ad" + (n === 1 ? "" : "s") + " first listed since your last visit on " + L.esc(prev) + ".</span>" +
+        '<button class="btn btn-outline" type="button" id="sinceAll" style="min-height:34px"><span>Show all</span></button>'
+      : "<span><b>" + n + "</b> ad" + (n === 1 ? "" : "s") + " first listed since your last visit on " + L.esc(prev) + ".</span>" +
+        '<button class="btn btn-outline" type="button" id="sinceOnly" style="min-height:34px"><span>Show only these</span></button>';
+    const go = $(on ? "sinceAll" : "sinceOnly");
+    go.addEventListener("click", () => { if (on) delete S.f.since; else S.f.since = prev; renderSince(); refresh(); });
+  }
+  function initSince() {
+    const today = new Date().toISOString().slice(0, 10), prev = store.get("jagga.lastVisit", null);
+    store.set("jagga.lastVisit", today);
+    SINCE = prev && prev < today ? prev : null;
+    renderSince();
+  }
+
   function init() {
     D.meta.districts.forEach((d) => $("fDis").insertAdjacentHTML("beforeend", '<option value="' + L.esc(d.district_id) + '">' + L.esc(d.district) + " (" + d.n + ")</option>"));
     D.meta.sources.forEach((s) => $("fSrc").insertAdjacentHTML("beforeend", '<option value="' + L.esc(s.source) + '">' + L.esc(s.source) + " (" + s.n + ")</option>"));
     const cuts = D.listings.filter((l) => L.isCut(l)).length;     // honest filter: no genuine seller price cut observed yet => say so
     if (!cuts) { $("fCut").disabled = true; $("fCut").parentElement.title = "No seller price cut has been observed yet; this fills in as listings are re-checked over time."; $("fCut").nextElementSibling.textContent = "Price cut (none seen yet)"; }
+    S.profile = loadProfile(); S.tiers = { 3: true, 2: true, 1: false }; S.fon = store.get("jagga.fon", true); S.pick = false;
     Object.assign(S.f, L.parseHash(location.hash));
     if (S.f.fresh) { S.f.age = "7"; delete S.f.fresh; }          // old shared links used fresh=1 ("new this week")
     writeUI();
     $("watchCount").textContent = Object.keys(S.watch).length;
     $("foot").innerHTML = "Built " + L.esc(D.meta.built_at) + " · " + D.meta.sources.map((s) => L.esc(s.source) + " fetched " + L.esc(s.last_fetch || "never")).join(" · ") +
       ' · <button class="btn btn-ghost" type="button" data-cov="1"><span>' + D.meta.nation.districts[0] + "/" + D.meta.nation.districts[1] + " districts covered</span></button><br>Screening tool, not advice.";
-    initMap(); syncTopHeight(); window.addEventListener("resize", debounce(syncTopHeight, 100)); readUI(); renderList();
+    initMap(); recomputeFinder(); initSince(); initOffline(); syncTopHeight(); window.addEventListener("resize", debounce(syncTopHeight, 100)); readUI(); renderList();
     const want = hashState(); if (want && byId.has(want)) openDrawer(want, false);
 
     ["fDis", "fSrc", "fUnit", "fAunit", "fSort", "fAge", "fCut", "fDups"].forEach((id) => $(id).addEventListener("change", refresh));
-    $("fIdeal").addEventListener("change", () => { if ($("fIdeal").checked) $("fSort").value = "ideal"; else if ($("fSort").value === "ideal") $("fSort").value = "price"; refresh(); });
+    finderEvents(); $("btnFinder").addEventListener("click", () => ($("finder").hidden ? openFinder() : closeFinder())); $("fClose").addEventListener("click", closeFinder);
     ["fPmin", "fPmax", "fAmin", "fAmax", "fRoad"].forEach((id) => $(id).addEventListener("input", debounce(refresh, 250)));
     $("q").addEventListener("input", debounce(refresh, 200)); $("searchForm").addEventListener("submit", (e) => { e.preventDefault(); refresh(); });
     $("fMapOnly").addEventListener("change", () => { S.shown = PAGE; renderList(); });
@@ -454,11 +631,10 @@
       const round = (x) => String(+(x >= 1000 ? Math.round(x / 100) * 100 : x.toPrecision(2)));
       S.f.pmin = round(+r.dataset.lo); S.f.pmax = round(+r.dataset.hi); writeUI(); refresh();
     });
-    $("btnReset").addEventListener("click", () => { S.f = { unit: "aana", aunit: "aana", sort: "price" }; writeUI(); refresh(); });
+    $("btnReset").addEventListener("click", () => { S.f = { unit: "aana", aunit: "aana", sort: "price" }; renderSince(); S.profile = F.ensureRows(F.defaultProfile(), FLAGS); saveProfile(); recomputeFinder(); writeUI(); if (!$("finder").hidden) renderFinderForm(); refresh(); });
     $("btnMore").addEventListener("click", () => { S.shown += PAGE; renderList(); });
     $("lyL").addEventListener("change", (e) => map && (e.target.checked ? layerL.addTo(map) : map.removeLayer(layerL)));
     $("lyB").addEventListener("change", (e) => map && (e.target.checked ? layerB.addTo(map).bringToBack() : map.removeLayer(layerB)));
-    $("lyI").addEventListener("change", (e) => map && layerI && (e.target.checked ? layerI.addTo(map) : map.removeLayer(layerI)));
     $("lyC").addEventListener("change", (e) => map && (e.target.checked ? layerC.addTo(map) : map.removeLayer(layerC)));
     $("dClose").addEventListener("click", closeDrawer); $("mClose").addEventListener("click", () => $("modal").close());
     $("btnCoverage").addEventListener("click", () => openModal("coverage", coverageHTML()));
@@ -479,7 +655,12 @@
       if ($("drawer").hidden || $("modal").open || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || ""))) return;
       if (e.key === "j" || e.key === "J") { e.preventDefault(); step(1); } else if (e.key === "k" || e.key === "K") { e.preventDefault(); step(-1); }
     });
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("drawer").hidden && !$("modal").open) closeDrawer(); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || $("modal").open) return;
+      if (S.pick) { S.pick = false; document.body.classList.remove("picking"); renderList(); openFinder(); }
+      else if (!$("finder").hidden) closeFinder();
+      else if (!$("drawer").hidden) closeDrawer();
+    });
     document.addEventListener("click", (e) => {
       const t = e.target.closest("[data-star],[data-cmp],[data-open],[data-showmap],[data-cov],[data-export],.card"); if (!t) return;
       if (t.dataset.cmp) { e.stopPropagation(); toggleCompare(t.dataset.cmp); }

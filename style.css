@@ -185,10 +185,59 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; } th, td { text
 .cl:hover { transform: scale(1.12); border-color: var(--cyan); box-shadow: 0 0 18px var(--cyan); }
 .leaflet-popup-content .btn { display: block; min-height: 36px; padding: 2px 8px; text-align: left; }
 
-/* ideal finder */
+/* finder tiers (match / possible / near miss) and the checklist in the X-Ray */
 .tag.ideal.t4 { border-color: #5dff9b; color: #000; background: #5dff9b; }
 .tag.ideal.t3 { border-color: var(--magenta); color: #fff; background: rgba(255,0,255,.28); }
 .tag.ideal.t2 { border-color: var(--orange); color: var(--orange); }
 .tag.ideal.t1 { border-color: var(--line-ui); color: var(--chrome-dim); }
 .ideal-list li.pass b { color: #5dff9b; } .ideal-list li.fail b { color: #ff6b8a; } .ideal-list li.unknown b { color: var(--orange); }
-.ideal-chip span { color: var(--magenta); }
+
+.ask { margin: 10px 0 14px; border: 1px solid var(--line, #3a1b5c); padding: 6px 10px; }
+.ask > summary { cursor: pointer; font-weight: 700; color: #fff; }
+.ask .who { font: 700 10px var(--mono, monospace); text-transform: uppercase; letter-spacing: .04em; color: var(--cyan); border: 1px solid var(--cyan); padding: 0 4px; margin-right: 4px; white-space: normal; }
+.ask .why { display: block; color: var(--chrome-dim); font-size: 12px; }
+
+/* my finder: a panel docked over the list column; the map stays visible so every change shows at once */
+.finder { position: fixed; left: 0; top: var(--top-h); bottom: 0; width: min(460px, 100%); z-index: 42; overflow: auto; background: #05000f;
+  border: 2px solid var(--magenta); border-left: 0; box-shadow: 0 0 30px rgba(255,0,255,.25); }
+.finder[hidden] { display: none; }
+/* wide screens: list | finder | map, so the list answers every tick while you are still choosing */
+@media (min-width: 1180px) {
+  body.finder-open .split { grid-template-columns: 330px 440px 1fr; }
+  body.finder-open .list-pane { grid-column: 1; padding: 12px 10px 80px; }
+  body.finder-open .map-pane { grid-column: 3; }
+  body.finder-open .finder { left: 330px; width: 440px; border-left: 2px solid var(--magenta); }
+  body.finder-open .list-pane .hist { display: none; }
+}
+.finder-body { padding: 12px 16px 60px; font-size: 14px; }
+.finder h3 { font: 700 13px var(--font-head); letter-spacing: .15em; text-transform: uppercase; color: var(--magenta); margin: 18px 0 6px; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; } .presets .btn { min-height: 36px; padding: 2px 10px; font-size: 13px; }
+.f-sum { position: sticky; top: 0; z-index: 3; background: #05000f; padding: 8px 0 6px; border-bottom: 1px dashed var(--line-ui); }
+.tiers { display: flex; gap: 6px; flex-wrap: wrap; }
+.tiers button { all: unset; cursor: pointer; padding: 4px 10px; border: 1px solid var(--line-ui); font-size: 13px; text-transform: uppercase; letter-spacing: .06em; }
+.tiers button[aria-pressed=true] { background: rgba(255,0,255,.28); border-color: var(--magenta); color: #fff; } .tiers button:focus-visible { outline: 2px solid var(--cyan); }
+.tiers b { color: var(--cyan); font-weight: 400; }
+.funnel { margin: 8px 0 0; } .funnel summary { cursor: pointer; color: var(--chrome-dim); }
+.funnel ol { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.funnel li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 13px; }
+.funnel li .bar { grid-column: 1 / -1; height: 5px; background: var(--sunset); }
+.funnel li small { color: var(--chrome-dim); } .funnel li.zero b { color: #ff6b8a; }
+.relax { margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.relax button { min-height: 34px; padding: 2px 10px; font-size: 13px; }
+.fr { border: 1px solid var(--line-ui); background: rgba(26,16,60,.5); margin: 6px 0; padding: 6px 10px 8px; }
+.fr.on { border-color: var(--cyan); }
+.fr header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fr header label { display: flex; align-items: center; gap: 8px; cursor: pointer; } .fr input[type=checkbox] { accent-color: var(--magenta); width: 18px; height: 18px; }
+.fr select, .fr input:not([type=checkbox]) { background: #000; border: 1px solid var(--line-ui); color: var(--cyan); padding: 6px 8px; min-height: 36px; max-width: 100%; }
+.fr input[type=number], .fr input.num { width: 84px; }
+.fr .body { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; color: var(--chrome-dim); }
+.fr .hint { flex-basis: 100%; font-size: 12px; color: var(--chrome-dim); }
+.fr.off .body { display: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
+.pchip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--cyan); padding: 2px 4px 2px 8px; color: var(--cyan); }
+.pchip input { width: 54px !important; min-height: 28px !important; padding: 2px 4px !important; } .pchip button { all: unset; cursor: pointer; padding: 2px 8px; color: var(--chrome); } .pchip button:hover { color: var(--magenta); }
+.f-foot { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.banner { margin: 0 0 10px; padding: 8px 12px; border: 1px solid var(--orange); background: rgba(255,153,0,.1); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.banner[hidden] { display: none; }
+body.picking #map { cursor: crosshair; }
+@media (max-width: 900px) { .finder { top: 0; width: 100%; z-index: 62; border: 0; } }
