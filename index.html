@@ -26,18 +26,19 @@
     <form class="search" role="search" id="searchForm" autocomplete="off">
       <label class="sr" for="q">Search by place or keyword</label>
       <span class="prompt" aria-hidden="true">&gt;</span>
-      <input id="q" type="search" placeholder="chabahil, dahachowk, 10 aana…" spellcheck="false">
+      <input id="q" type="search" placeholder="Search a place…" spellcheck="false">
     </form>
+    <button class="btn btn-ghost only-narrow" id="btnFilters" type="button" aria-expanded="false" aria-controls="filtersBar"><span>Filters <b id="filterCount"></b></span></button>
     <nav class="top-actions" aria-label="Site">
       <button class="btn btn-primary" id="btnFinder" type="button" aria-expanded="false" aria-controls="finder" title="Say what you want (any districts, size, budget, terrain, places to be near, wishes) and see which ads fit, and why none do"><span>◎ My finder <b id="finderCount"></b></span></button>
       <button class="btn btn-ghost" id="btnCompare" type="button" aria-label="Compare selected listings"><span>⇄ Compare <b id="cmpCount">0</b></span></button>
-      <button class="btn btn-ghost" id="btnWatch" type="button"><span>★ Watchlist <b id="watchCount">0</b></span></button>
+      <button class="btn btn-ghost" id="btnWatch" type="button"><span>★ Saved <b id="watchCount">0</b></span></button>
       <button class="btn btn-ghost" id="btnCoverage" type="button"><span>Coverage</span></button>
       <button class="btn btn-ghost" id="btnAbout" type="button"><span>About</span></button>
       <a class="btn btn-ghost" id="btnLang" href="#" hidden lang="ne" title="Opens this page through Google Translate. Google sees what you view there, and your watchlist and notes (stored per site address) are not carried across."><span>नेपाली</span></a>
     </nav>
   </div>
-  <div class="filters" role="group" aria-label="Filters">
+  <div class="filters" id="filtersBar" role="group" aria-label="Filters">
     <label class="chip"><span class="sr">District</span>
       <select id="fDis"><option value="">All districts</option></select></label>
     <label class="chip"><span class="sr">Price unit</span>
@@ -68,21 +69,29 @@
 
 <main class="split" id="main">
   <section class="list-pane" aria-labelledby="resultsHead">
+    <div class="banner welcome" id="welcome" role="region" aria-label="How to use this site" hidden>
+      <div><b>New here?</b> Land ads from four Nepali portals, each one checked and compared with similar ads.
+        <ol><li>Tap an ad for its fact-check and what to ask before you pay.</li>
+          <li><b>◎ My finder</b> narrows the list to what you want: place, size, budget, road, hills.</li>
+          <li><b>☆ Save</b> plots to shortlist them. Saved plots and notes stay on this device.</li></ol></div>
+      <button class="btn btn-outline" id="welcomeOk" type="button"><span>Got it</span></button>
+    </div>
     <div class="list-head">
       <h1 id="resultsHead" class="count" aria-live="polite">— listings</h1>
       <div class="list-tools">
         <label class="chip"><span class="lbl">Sort</span>
           <select id="fSort" aria-label="Sort order">
-            <option value="price">Price: low to high</option><option value="-price">Price: high to low</option>
+            <option value="new">Newest posted</option><option value="price">Price: low to high</option><option value="-price">Price: high to low</option>
             <option value="value">Cheapest vs comps</option><option value="total">Total price</option>
-            <option value="-area">Largest area</option><option value="fit">Best fit (my finder)</option><option value="new">Newest</option>
+            <option value="-area">Largest area</option><option value="fit">Best fit (my finder)</option>
           </select></label>
-        <label class="chip check" title="Only list what is inside the map view"><input id="fMapOnly" type="checkbox"><span>Search map area</span></label>
+        <label class="chip check map-only" title="Only list what is inside the map view"><input id="fMapOnly" type="checkbox"><span>Search map area</span></label>
         <details class="export"><summary class="btn btn-ghost"><span>Export</span></summary>
           <div class="menu"><button type="button" data-export="csv">CSV</button><button type="button" data-export="geojson">GeoJSON</button><button type="button" data-export="kml">KML</button></div>
         </details>
       </div>
     </div>
+    <p class="fresh" id="freshLine" role="status" hidden></p>
     <div class="banner" id="netBanner" role="status" hidden></div>
     <div class="banner" id="sinceBanner" role="status" hidden></div>
     <figure class="hist" id="hist" hidden><svg id="histSvg" role="img" aria-label="Price distribution" viewBox="0 0 400 64" preserveAspectRatio="none"></svg>
@@ -115,7 +124,7 @@
 </aside>
 
 <aside class="drawer" id="drawer" role="dialog" aria-modal="false" aria-labelledby="dTitle" hidden>
-  <div class="win-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="win-title">&gt; listing.xray <small id="dPos" class="foot"></small></span>
+  <div class="win-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="win-title">&gt; plot details <small id="dPos" class="foot"></small></span>
     <button class="x" id="dPrev" type="button" aria-label="Previous listing (K)" title="Previous listing (K)">‹</button><button class="x" id="dNext" type="button" aria-label="Next listing (J)" title="Next listing (J)">›</button>
     <button class="x" id="dClose" type="button" aria-label="Close details">✕</button></div>
   <div class="drawer-body" id="dBody"></div>

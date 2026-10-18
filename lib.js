@@ -56,12 +56,94 @@
     return Math.max(0, Math.floor((t - d) / 86400000));
   }
 
+  /** Area in the words people use: "16 ropani", "4 aana 2 paisa", "2 kattha 16 dhur" (the dash notation 16-0-0-0 is for the X-Ray). '' when it is too small to say. */
+  function areaPlain(sqm, system, units) {
+    if (sqm == null) return "";
+    const names = system === "terai" ? ["bigha", "kattha", "dhur"] : ["ropani", "aana", "paisa", "daam"];
+    const parts = areaNotation(sqm, system, units).split("-").map(Number);
+    return parts.map(function (n, i) { return n ? n + " " + names[i] : ""; }).filter(Boolean).join(" ");
+  }
+
+  /** "today", "yesterday", "5 days ago", "3 weeks ago", "4 months ago", "2.8 years ago". */
+  function relTime(days) {
+    if (days == null) return "";
+    if (days === 0) return "today";
+    if (days === 1) return "yesterday";
+    if (days < 14) return days + " days ago";
+    if (days < 60) return Math.floor(days / 7) + " weeks ago";
+    if (days < 365) return Math.floor(days / 30) + " months ago";
+    return (Math.round(days / 36.5) / 10) + " years ago";
+  }
+
+  /** When the PORTAL says the ad was put up, in words: 'posted 6 days ago', 'updated 3 months ago', 're-listed ...', or that no date is stated. */
+  function whenText(l, today) {
+    if (!l.po) return "date not stated";
+    const verb = l.pk === "updated" ? "updated" : l.pk === "relisted" ? "re-listed" : l.pk === "posted" ? "posted" : "dated";
+    return verb + " " + relTime(daysSince(l.po, today));
+  }
+
+  /** How old the data is, from when each crawled portal last answered (meta.refresh: [{source, last_ok: "YYYY-MM-DD HH:MM", UTC}]).
+   *  -> {text, stale, detail}: 'Data refreshed 5 hours ago'; stale (over 3 days) says what that means. null when nothing was ever crawled. */
+  function freshness(refresh, now) {
+    const t = (now instanceof Date ? now : new Date()).getTime();
+    const rows = (refresh || []).filter(function (r) { return r.last_ok; }).map(function (r) {
+      return { source: r.source, hours: Math.max(0, (t - Date.parse(r.last_ok.replace(" ", "T") + ":00Z")) / 36e5) };
+    });
+    if (!rows.length) return null;
+    const say = function (h) { return h < 1 ? "less than an hour ago" : h < 24 ? Math.floor(h) + (Math.floor(h) === 1 ? " hour" : " hours") + " ago" : relTime(Math.floor(h / 24)); };
+    const newest = Math.min.apply(null, rows.map(function (r) { return r.hours; }));
+    const old = rows.filter(function (r) { return r.hours > 72; });
+    const detail = rows.map(function (r) { return r.source + " " + say(r.hours); }).join(", ");
+    if (newest > 72) return { stale: true, text: "Data last refreshed " + say(newest) + ". Ads posted, removed or re-priced since then are missing.", detail: detail };
+    if (old.length) return { stale: true, text: "Data refreshed " + say(newest) + ", but " + old.map(function (r) { return r.source + " was last checked " + say(r.hours); }).join(", ") + ".", detail: detail };
+    return { stale: false, text: "Data refreshed " + say(newest), detail: detail };
+  }
+
+  /** A price against its comparables, in plain words for a card. c: {p: percentile (low = cheap), n, rel}. */
+  function compsPlain(c) {
+    if (!c) return null;
+    return c.p < 25 ? "cheaper than most similar ads" : c.p > 75 ? "dearer than most similar ads" : "mid-priced for its area";
+  }
+
+  var FLAG_WORDS = { view: "a view", farm: "farming", water: "water", stay: "tourism use", paved: "a paved road", flat: "level ground", quiet: "a quiet setting" };
+
+  /** "At a glance": 4-8 plain sentences built ONLY from what is already known about the ad (nothing is estimated here).
+   *  o: {today, unit (price unit key), T (unit table), units (area units), flags: meta.flags}. */
+  function glance(l, o) {
+    const out = [], T = o.T, per = function (u) { return fmtMoney(perUnit(l.p, u, T)); };
+    if (l.p != null) out.push("Asking " + per(o.unit) + " per " + (o.unit === "sqft" ? "sq ft" : o.unit === "sqm" ? "m²" : o.unit) + (l.tot ? ", " + fmtMoney(l.tot) + " for the whole plot" : "") + ".");
+    else if (l.tot) out.push("Asking " + fmtMoney(l.tot) + " for the whole plot. The area could not be read, so there is no price per aana to compare.");
+    if (l.p != null) {
+      if (l.c && l.c.rel !== "weak") out.push("Cheaper than about " + (100 - l.c.p) + "% of the " + l.c.n + " similar ads nearby (same area, land type and road).");
+      else if (l.c) out.push("Only compared with the whole district, which is a weak comparison: locations differ a lot.");
+      else out.push("Not enough similar ads nearby to say whether this price is high or low.");
+    }
+    out.push(l.road ? "Road: " + l.road + " ft wide, as the ad states." : "The ad does not state the road width: ask.");
+    if (!l.po) out.push("The portal gives no posting date: ask how long it has been for sale.");
+    else out.push("The portal says it was " + whenText(l, o.today) + (l.pk === "updated" || l.pk === "relisted" ? "; when it was first posted is not stated" : "") +
+      (daysSince(l.po, o.today) > 180 ? ". It is still listed, but confirm it is still for sale" : "") + ".");
+    out.push(l.prec === "exact" ? "The map pin comes from the ad itself." : l.prec === "locality" ? "Location is approximate (the village or area, not the plot): do not trust distances." :
+      l.prec === "palika" ? "Only the municipality is known: the pin is at its centre, not at the plot." : "The ad gives no usable location.");
+    if (l.el != null) out.push("About " + l.el.toLocaleString("en-US") + " m above sea level (terrain model, about 150 m resolution).");
+    else if (l.er) out.push("The municipality spans about " + l.er[0].toLocaleString("en-US") + " to " + l.er[1].toLocaleString("en-US") + " m above sea level; the plot's own height is not known.");
+    const names = (o.flags || []).map(function (f, i) { return (l.tf || 0) >> i & 1 ? FLAG_WORDS[f.k] || f.label : null; }).filter(Boolean);
+    if (names.length) out.push("The ad mentions: " + names.join(", ") + ". That is what the seller wrote, not something we measured.");
+    if (l.tw) out.push("Probably listed " + (l.tw + 1) + " times (same district, area, price and place). It counts once in comparisons.");
+    return out;
+  }
+
   /** "New" means the PORTAL dated the ad within a week. Being first seen by us recently only means we found it recently:
    *  a sweep can discover hundreds of old ads in one day. No posted date => never called new. */
   function isNewAd(l, today) {
     if (l.pk === "updated" || l.pk === "relisted") return false;       // a date the ad was touched is not the date it was posted
     const n = daysSince(l.po, today);
     return n != null && n <= 7;
+  }
+
+  /** Posted after the visitor's previous visit, by the PORTAL's date. When WE first found an ad says nothing about when it was posted (one sweep found 1,335 old ads in a day). */
+  function postedSince(l, prev) {
+    if (l.pk === "updated" || l.pk === "relisted") return false;
+    return !!l.po && l.po > prev;
   }
 
   function isCut(l) {
@@ -104,7 +186,7 @@
       }
       if (l.dup && !f.dups) return false;
       if (f.cut && !isCut(l)) return false;
-      if (f.since && !(l.fs && l.fs > f.since)) return false;       // first listed after the visitor's previous visit
+      if (f.since && !postedSince(l, f.since)) return false;         // posted (by the portal's date) after the visitor's previous visit
       if (f.bounds) {
         if (l.lat == null) return false;
         const b = f.bounds;
@@ -119,7 +201,7 @@
     "-price": function (a, b) { return nullsLast(a.p, b.p, -1); },
     total: function (a, b) { return nullsLast(a.tot, b.tot, 1); },
     "-area": function (a, b) { return nullsLast(a.a, b.a, -1); },
-    new: function (a, b) { return (b.fs || "").localeCompare(a.fs || ""); },
+    new: function (a, b) { return (b.po || "").localeCompare(a.po || "") || (b.fs || "").localeCompare(a.fs || ""); },   // the portal's date: a sweep finds hundreds of old ads in one day
     value: function (a, b) { return nullsLast(a.c && a.c.p, b.c && b.c.p, 1); }
   };
   function nullsLast(x, y, dir) {
@@ -210,5 +292,5 @@
       return '<li><span class="who">' + esc(WHO[a.o] || a.o) + "</span> " + esc(a.a) + ' <span class="' + (cls || "why") + '">Because: ' + esc(a.w) + "</span></li>";
     }).join("");
   }
-  return { askHTML, histogram, unitTable, perUnit, toPps, fmtMoney, areaNotation, daysSince, isNewAd, isCut, compsLabel, filter, sort, toHash, parseHash, toCSV, toGeoJSON, toKML, esc, safeUrl };
+  return { askHTML, histogram, unitTable, perUnit, toPps, fmtMoney, areaNotation, areaPlain, relTime, whenText, compsPlain, glance, freshness, daysSince, isNewAd, postedSince, isCut, compsLabel, filter, sort, toHash, parseHash, toCSV, toGeoJSON, toKML, esc, safeUrl };
 });

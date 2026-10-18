@@ -12,7 +12,7 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode: degrade silently */ } }
   };
 
-  const S = { f: { unit: "aana", aunit: "aana", sort: "price" }, cmp: [], shown: PAGE, sel: null, watch: store.get("jagga.watch", {}), bounds: null, fitNext: true, lastFocus: null };
+  const S = { f: { unit: "aana", aunit: "aana", sort: "new" }, cmp: [], shown: PAGE, sel: null, watch: store.get("jagga.watch", {}), bounds: null, fitNext: true, lastFocus: null };
   const byId = new Map(D.listings.map((l) => [l.id, l]));
   let FR = null, FRMAP = new Map(), PLACES = null, placesP = null, SINCE = null;       // the finder's last run, by listing id; the places picker's data (loaded on demand)
   let visible = [], map = null, layerA = null, layerS = null, layerL = null, layerC = null, layerB = null, markers = new Map(), canvas = null;
@@ -41,7 +41,7 @@
   function areaText(l) {
     if (l.a == null) return "area n/a";
     const sqm = Math.round(l.a).toLocaleString("en-US") + " m²";
-    return l.sys ? L.areaNotation(l.a, l.sys, D.meta.units) + " (" + sqm + ")" : sqm + " · " + (l.a / T.aana).toFixed(1) + " aana";
+    return l.sys ? (L.areaPlain(l.a, l.sys, D.meta.units) || L.areaNotation(l.a, l.sys, D.meta.units)) + " (" + sqm + ")" : sqm + " · " + (l.a / T.aana).toFixed(1) + " aana";
   }
   // Lead with the RESOLVED place; raw portal text is shown only when short and clean (it is often a jumble).
   const placeText = (l) => [l.pal, l.dis, l.loc && l.loc.length <= 36 ? l.loc : ""].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(", ");
@@ -61,7 +61,7 @@
     $("q").value = f.q || ""; $("fDis").value = f.dis || ""; $("fSrc").value = f.src || ""; $("fUnit").value = f.unit || "aana";
     $("fPmin").value = f.pmin || ""; $("fPmax").value = f.pmax || ""; $("fAunit").value = f.aunit || "aana";
     $("fAmin").value = f.amin || ""; $("fAmax").value = f.amax || ""; $("fRoad").value = f.road || "";
-    $("fAge").value = f.age || ""; $("fCut").checked = !!f.cut; $("fDups").checked = !!f.dups; $("fSort").value = f.sort || "price";
+    $("fAge").value = f.age || ""; $("fCut").checked = !!f.cut; $("fDups").checked = !!f.dups; $("fSort").value = f.sort || "new";
   }
   function hashState() { const m = /(?:^|&)l=([0-9a-f]+)/.exec(location.hash.slice(1)); return m ? m[1] : null; }
   function pushHash() {
@@ -75,31 +75,31 @@
     const f = Object.assign({}, S.f, { bounds: $("fMapOnly").checked && S.bounds ? S.bounds : null });
     let rows = L.filter(D.listings, f, T);
     if (FR) rows = rows.filter((l) => { const it = FRMAP.get(l.id); return it && S.tiers[it.tier]; });
-    visible = S.f.sort === "fit" && FR ? rows.sort((a, b) => F.byFit(FRMAP.get(a.id), FRMAP.get(b.id))) : L.sort(rows, S.f.sort === "fit" ? "price" : S.f.sort || "price");
+    visible = S.f.sort === "fit" && FR ? rows.sort((a, b) => F.byFit(FRMAP.get(a.id), FRMAP.get(b.id))) : L.sort(rows, S.f.sort === "fit" ? "new" : S.f.sort || "new");
   }
   function cardHTML(l) {
     const c = l.c, tags = [];
-    if (c) tags.push('<span class="tag ' + (c.p < 25 ? "cheap" : c.p > 75 ? "dear" : "") + '"><i>' + L.esc(L.compsLabel(c)) + "</i></span>");
-    if (c && c.rel === "weak") tags.push('<span class="tag weak" title="Compared with the whole district: locations differ"><i>weak comps</i></span>');
+    if (c) tags.push('<span class="tag ' + (c.p < 25 ? "cheap" : c.p > 75 ? "dear" : "") + '" title="At the ' + c.p + 'th percentile of ' + c.n + ' similar ads (lower is cheaper)"><i>' + L.esc(L.compsPlain(c)) + "</i></span>");
+    if (c && c.rel === "weak") tags.push('<span class="tag weak" title="Compared with the whole district: locations differ"><i>weak comparison</i></span>');
     if (l.pc === "low") tags.push('<span class="tag weak" title="Low confidence: see the X-Ray for why"><i>price uncertain</i></span>');
     if (l.pb === "total_reread") tags.push('<span class="tag weak" title="The ad put a total price in the per-unit field; it has been read as a total"><i>read as total</i></span>');
     const fit = FRMAP.get(l.id);
     if (fit && fit.tier) tags.unshift('<span class="tag ideal t' + fit.tier + '" title="' + (fit.tier === 3 ? "every must-have passes" : fit.tier === 2 ? "nothing fails, some must-haves are unknown (the ad does not say)" : "exactly one must-have fails: see the checklist") + '"><i>' + F.TIER[fit.tier] + (fit.wishTotal ? " · " + fit.wishes + "/" + fit.wishTotal + " wishes" : "") + "</i></span>");
     if (L.isCut(l)) tags.push('<span class="tag cut"><i>price cut</i></span>');
-    if (isNew(l)) tags.push('<span class="tag new"><i>new</i></span>');
-    if (l.tw) tags.push('<span class="tag weak" title="Same district, area, price and place as other postings, so probably the same plot. Photos and contacts are not used, so this cannot be proven: two plots in one subdivision can match too."><i>likely posted ' + (l.tw + 1) + "×</i></span>");
+    if (isNew(l)) tags.push('<span class="tag new"><i>new this week</i></span>');
+    if (l.tw) tags.push('<span class="tag weak" title="Same district, area, price and place as other postings, so probably the same plot. Photos and contacts are not used, so this cannot be proven: two plots in one subdivision can match too."><i>listed ' + (l.tw + 1) + '× (likely the same plot)</i></span>');
     const age = L.daysSince(l.po);
-    if (age != null && age > 180) tags.push('<span class="tag weak" title="The portal dates this ad long ago and still lists it; confirm it is still for sale"><i>ad ' + (age > 365 ? Math.round(age / 365 * 10) / 10 + "y" : Math.round(age / 30) + "mo") + " old</i></span>");
+    if (age != null && age > 180) tags.push('<span class="tag weak" title="The portal dates this ad long ago and still lists it; confirm it is still for sale"><i>old ad: check it is still for sale</i></span>');
     const place = placeText(l);
     const starred = !!S.watch[l.id];
     return '<li class="card' + (S.sel === l.id ? " sel" : "") + '" data-id="' + l.id + '">' +
       '<div class="price">' + L.esc(priceText(l)) + perText(l) + "</div>" +
-      '<span class="card-actions"><button class="cmp" type="button" data-cmp="' + l.id + '" aria-pressed="' + (S.cmp.indexOf(l.id) >= 0) + '" aria-label="' + (S.cmp.indexOf(l.id) >= 0 ? "Remove from comparison" : "Add to comparison (up to 3)") + '">' + (S.cmp.indexOf(l.id) >= 0 ? "✓ compare" : "compare") + "</button> " +
-      '<button class="star" type="button" data-star="' + l.id + '" aria-pressed="' + starred + '" aria-label="' + (starred ? "Remove from watchlist" : "Add to watchlist") + '">' + (starred ? "★" : "☆") + "</button></span>" +
+      '<span class="card-actions"><button class="cmp" type="button" data-cmp="' + l.id + '" aria-pressed="' + (S.cmp.indexOf(l.id) >= 0) + '" aria-label="' + (S.cmp.indexOf(l.id) >= 0 ? "Remove from comparison" : "Add to comparison (up to 3)") + '">' + (S.cmp.indexOf(l.id) >= 0 ? "✓ Compare" : "＋ Compare") + "</button> " +
+      '<button class="star" type="button" data-star="' + l.id + '" aria-pressed="' + starred + '" aria-label="' + (starred ? "Remove from saved plots" : "Save this plot") + '">' + (starred ? "★ Saved" : "☆ Save") + "</button></span>" +
       '<h3><button type="button" data-open="' + l.id + '">' + L.esc(l.t) + "</button></h3>" +
       '<div class="facts"><span>' + L.esc(areaText(l)) + "</span>" + (l.tot && l.p != null ? "<span>" + L.esc(L.fmtMoney(l.tot)) + " total</span>" : "") +
       (l.road ? "<span>" + l.road + " ft road</span>" : "") + '<span class="dim">' + L.esc(place) + "</span>" +
-      '<span class="dim">' + L.esc(l.src) + (l.fs ? " · seen " + ago(l.fs) : "") + "</span></div>" +
+      '<span class="dim">' + L.esc(l.src) + " · " + L.whenText(l) + "</span></div>" +
       (tags.length ? '<div class="tags">' + tags.join("") + "</div>" : "") + "</li>";
   }
   // ---------- price histogram: the distribution under every filter EXCEPT price, so you can see where a budget sits ----------
@@ -117,13 +117,19 @@
     $("histCap").textContent = "Per " + UNIT_LABEL[S.f.unit] + ": median " + L.fmtMoney(h.median) + " · range " + L.fmtMoney(h.min) + " – " + L.fmtMoney(h.max) + " · click a bar to filter to it";
   }
 
+  /** How many filters are set, for the phone's "Filters (n)" button. */
+  function countFilters() {
+    const f = S.f;
+    return [f.dis, f.src, f.pmin || f.pmax, f.amin || f.amax, f.road, f.age, f.cut, f.dups, f.q].filter(Boolean).length;
+  }
   function renderList() {
     compute(); renderHist();
+    const nf = countFilters(); $("filterCount").textContent = nf ? "(" + nf + ")" : "";
     $("resultsHead").textContent = visible.length + (visible.length === 1 ? " listing" : " listings") +
       (FR ? " · " + FR.counts[3] + " match my finder" : "");
     const shown = visible.slice(0, S.shown);
     $("results").innerHTML = shown.length ? shown.map(cardHTML).join("") :
-      '<li class="empty">No listings match. Coverage is limited — see <button class="btn btn-ghost" type="button" data-cov="1"><span>Coverage</span></button> for where data exists.</li>';
+      '<li class="empty"><b>No listings match these filters.</b> Try removing one, or <button class="btn btn-outline" type="button" id="emptyReset"><span>Clear all filters</span></button><br>Most ads are in the Kathmandu valley; <button class="btn btn-ghost" type="button" data-cov="1"><span>see where data exists</span></button>.</li>';
     $("btnMore").hidden = visible.length <= S.shown;
     $("btnMore").firstElementChild.textContent = "Show more (" + (visible.length - S.shown) + " left)";
     renderMap();
@@ -259,15 +265,16 @@
     $("dBody").innerHTML =
       '<h2 id="dTitle">' + L.esc(l.t) + "</h2>" +
       '<div class="price">' + L.esc(priceText(l)) + perText(l) + "</div>" +
-      '<dl class="kv"><dt>total</dt><dd>' + L.esc(l.tot ? L.fmtMoney(l.tot) : "n/a") + "</dd><dt>area</dt><dd>" + L.esc(areaText(l)) + "</dd>" +
+      '<h3 class="sec">At a glance</h3><ul class="glance">' + L.glance(l, { today: new Date(), unit: S.f.unit, T: T, flags: D.meta.flags }).map((x) => "<li>" + L.esc(x) + "</li>").join("") + "</ul>" +
+      '<h3 class="sec">The numbers</h3><dl class="kv"><dt>total</dt><dd>' + L.esc(l.tot ? L.fmtMoney(l.tot) : "n/a") + "</dd><dt>area</dt><dd>" + L.esc(areaText(l)) + "</dd>" +
       (l.p != null ? per : "") + "<dt>place</dt><dd>" + L.esc(placeText(l)) + L.esc(approx) + "</dd>" +
-      (l.po ? "<dt>ad dated</dt><dd>" + L.esc(l.po) + "</dd>" : "") + (l.fac ? "<dt>facing</dt><dd>" + L.esc(l.fac) + "</dd>" : "") + "<dt>first seen</dt><dd>" + L.esc(l.fs || "?") + "</dd><dt>last seen</dt><dd>" + L.esc(l.ls || "?") + "</dd></dl>" +
+      (l.po ? "<dt>ad dated</dt><dd>" + L.esc(l.po) + "</dd>" : "") + (l.fac ? "<dt>facing</dt><dd>" + L.esc(l.fac) + "</dd>" : "") + "<dt>first found here</dt><dd>" + L.esc(l.fs || "?") + "</dd><dt>last seen listed</dt><dd>" + L.esc(l.ls || "?") + "</dd></dl>" +
       finderCheck(l) +
-      '<h3 class="sec">X-Ray · each factor cited, none estimated</h3><ul class="factors">' + ok + no + "</ul>" +
+      '<h3 class="sec">The evidence, factor by factor <small class="foot">(each one cited; nothing is estimated)</small></h3><ul class="factors">' + ok + no + "</ul>" +
       (dt.ask && dt.ask.length ? '<details class="ask"><summary>Before you pay: ' + dt.ask.length + " things to ask or check</summary><ol class=\"factors\">" + L.askHTML(dt.ask) + "</ol></details>" : "") +
       (dt.h && dt.h.length > 1 ? '<h3 class="sec">Price history (NPR/m²)</h3>' + spark(dt.h) : "") +
       '<p><a class="btn btn-primary" href="' + L.esc(L.safeUrl(l.url)) + '" target="_blank" rel="noopener noreferrer"><span>View original ad ↗</span></a> ' +
-      '<button class="btn btn-outline" type="button" data-star="' + l.id + '" aria-pressed="' + !!S.watch[l.id] + '"><span>' + (S.watch[l.id] ? "★ Watching" : "☆ Watch") + "</span></button> " +
+      '<button class="btn btn-outline" type="button" data-star="' + l.id + '" aria-pressed="' + !!S.watch[l.id] + '"><span>' + (S.watch[l.id] ? "★ Saved" : "☆ Save") + "</span></button> " +
       (l.lat != null ? '<button class="btn btn-ghost only-narrow" type="button" data-showmap="' + l.id + '"><span>Show on map</span></button> ' : "") +
       '<button class="btn btn-ghost" type="button" data-copy="1"><span>Copy link</span></button></p>' +
       '<h3 class="sec">Your notes (stored only in this browser)</h3><label class="sr" for="note">Notes</label><textarea id="note" class="notes" placeholder="> road 13ft, owner flexible…"></textarea>';
@@ -323,7 +330,7 @@
   function aboutHTML() {
     const m = D.meta;
     return "<p>A personal screening tool for Nepali land. Listings are gathered from public classifieds portals; each links back to the original ad. Contact details, photos and full descriptions are not republished.</p>" +
-      '<h3 class="sec">How to read it</h3><p>There is no single score. Each listing has an X-Ray of separate, cited factors. A factor with no data is shown as <b>missing</b>, never estimated. “Comps” are other listings of similar size, nearest first (same palika, then radius, then district); a district-wide comparison is marked <b>weak</b>.</p>' +
+      '<h3 class="sec">How to read it</h3><p>There is no single score. Each ad has a fact-check (the “X-Ray”) made of separate factors, each with its source. A factor with no data is shown as <b>missing</b>, never estimated. “Similar ads” (comps) are other ads of similar size, nearest first (same municipality, then a radius, then the district); a district-wide comparison is marked <b>weak</b>.</p>' +
       '<h3 class="sec">My finder</h3><p>Say what you want: districts, size, budget, a road, ground elevation, places to be near (a palika, a landmark, or any point you click on the map), distance to a city, how recently posted, price against comparable ads, and what the ad says (a view, farming, water…). Each criterion is a <b>must</b> or a <b>nice to have</b> and is judged pass, fail or <b>unknown</b>; the funnel shows where ads drop out and how many more would match if you relaxed one. Your criteria stay in this browser. There is no score.</p>' +
       '<h3 class="sec">Units</h3><p>Every price is stored as NPR per m² and only shown in the unit you pick. Hill and Terai units are not interchangeable by eye: 1 aana ≈ 1.88 dhur. Positional notation like 2-10-5 is shown only where the district’s system is known.</p>' +
       '<h3 class="sec">Government valuation</h3><p>' + (m.govt_valuation_rows ? m.govt_valuation_rows + " real rate rows are loaded" + (m.govt_valuation_sources.indexOf("news") >= 0 ? ", <b>partial</b>: taken from a news report of the committee’s decision and covering only some Kathmandu-valley road segments. Everywhere else the comparison is shown as missing." : ".") : "<b>No real government minimum-valuation data is loaded yet</b>, so that comparison is shown as missing everywhere.") + " Minimum valuations are set per district by a committee chaired by the Chief District Officer.</p>" +
@@ -333,7 +340,7 @@
   }
   function watchHTML() {
     const ids = Object.keys(S.watch).filter((i) => byId.has(i));
-    if (!ids.length) return '<p class="empty">Nothing starred yet. Your watchlist and notes live only in this browser; export them to keep a copy.</p>';
+    if (!ids.length) return '<p class="empty">Nothing saved yet. Tap ☆ Save on a plot to shortlist it. Saved plots and notes live only in this browser; export them to keep a copy.</p>';
     return "<table><tr><th>listing</th><th class=n>price</th><th>note</th></tr>" + ids.map((i) => { const l = byId.get(i), n = store.get("jagga.note." + i, "");
       return '<tr><td><button class="btn btn-ghost" type="button" data-open="' + i + '"><span>' + L.esc(l.t.slice(0, 48)) + '</span></button></td><td class="n">' + L.esc(priceText(l)) + "</td><td>" + L.esc(n.slice(0, 80)) + "</td></tr>"; }).join("") + "</table>" +
       '<p><button class="btn btn-primary" type="button" id="wPrint"><span>Print shortlist</span></button> <button class="btn btn-outline" type="button" id="wExport"><span>Export JSON</span></button> <label class="btn btn-outline" style="display:inline-block"><span>Import JSON</span><input id="wImport" type="file" accept="application/json" class="sr"></label></p>';
@@ -581,23 +588,33 @@
     if ("serviceWorker" in navigator && (location.protocol === "https:" || /^(localhost|127\.0\.0\.1)$/.test(location.hostname))) navigator.serviceWorker.register("sw.js").catch(() => {});
     const note = () => {
       const b = $("netBanner"); b.hidden = navigator.onLine;
-      b.textContent = navigator.onLine ? "" : "Offline: showing what was saved on this device (built " + D.meta.built_at + "). Listings you have opened and your watchlist work; map tiles and new ads need a connection.";
+      b.textContent = navigator.onLine ? "" : "Offline: showing what was saved on this device (built " + D.meta.built_at + "). Listings you have opened and your saved plots work; map tiles and new ads need a connection.";
     };
     window.addEventListener("online", note); window.addEventListener("offline", note); note();
     const starred = Object.keys(S.watch).filter((i) => byId.has(i));
     if (navigator.onLine && starred.length) loadDetail(starred).catch(() => {});
   }
-  /** "New since your last visit": by when WE first saw the ad, against the date of this browser's previous visit. The narrowing stays visible on the banner. */
+  /** One honest line about how old the data is, computed when the page is opened: it keeps growing if the nightly crawl stops. */
+  function renderFresh() {
+    const f = L.freshness(D.meta.refresh, new Date()), el = $("freshLine");
+    if (!f) { el.hidden = true; return; }
+    el.hidden = false; el.classList.toggle("stale", f.stale); el.textContent = (f.stale ? "⚠ " : "● ") + f.text; el.title = f.detail;
+  }
+  /** "New since your last visit": by the date the PORTAL gives the ad, never by when WE first found it (a sweep can find hundreds of old ads in a day).
+   *  Older ads that were merely found since are counted apart. The narrowing stays visible on the banner. */
   function renderSince() {
     const b = $("sinceBanner"), prev = SINCE; if (!prev) { b.hidden = true; return; }
-    const n = D.listings.filter((l) => l.fs && l.fs > prev && !l.dup).length, on = !!S.f.since;
-    b.hidden = !n; if (!n) return;
-    b.innerHTML = on ? "<span>Showing only the <b>" + n + "</b> ad" + (n === 1 ? "" : "s") + " first listed since your last visit on " + L.esc(prev) + ".</span>" +
-        '<button class="btn btn-outline" type="button" id="sinceAll" style="min-height:34px"><span>Show all</span></button>'
-      : "<span><b>" + n + "</b> ad" + (n === 1 ? "" : "s") + " first listed since your last visit on " + L.esc(prev) + ".</span>" +
-        '<button class="btn btn-outline" type="button" id="sinceOnly" style="min-height:34px"><span>Show only these</span></button>';
+    const live = D.listings.filter((l) => !l.dup), n = live.filter((l) => L.postedSince(l, prev)).length;
+    const found = live.filter((l) => l.fs && l.fs > prev && !L.postedSince(l, prev)).length, on = !!S.f.since;
+    b.hidden = !n && !found; if (b.hidden) return;
+    const older = found ? " " + found + " older ad" + (found === 1 ? " was" : "s were") + " also newly found by this tool: they are in the list, dated as the portal dates them." : "";
+    b.innerHTML = (on ? "<span>Showing only the <b>" + n + "</b> ad" + (n === 1 ? "" : "s") + " the portals posted since your last visit on " + L.esc(prev) + "." + older + "</span>"
+        : n ? "<span><b>" + n + "</b> ad" + (n === 1 ? "" : "s") + " posted since your last visit on " + L.esc(prev) + ", by the portal's own date." + older + "</span>"
+        : "<span>No ad was posted since your last visit on " + L.esc(prev) + "." + older + "</span>") +
+      (on ? '<button class="btn btn-outline" type="button" id="sinceAll" style="min-height:34px"><span>Show all</span></button>'
+        : n ? '<button class="btn btn-outline" type="button" id="sinceOnly" style="min-height:34px"><span>Show only these</span></button>' : "");
     const go = $(on ? "sinceAll" : "sinceOnly");
-    go.addEventListener("click", () => { if (on) delete S.f.since; else S.f.since = prev; renderSince(); refresh(); });
+    if (go) go.addEventListener("click", () => { if (on) delete S.f.since; else S.f.since = prev; renderSince(); refresh(); });
   }
   function initSince() {
     const today = new Date().toISOString().slice(0, 10), prev = store.get("jagga.lastVisit", null);
@@ -618,7 +635,7 @@
     $("watchCount").textContent = Object.keys(S.watch).length;
     $("foot").innerHTML = "Built " + L.esc(D.meta.built_at) + " · " + D.meta.sources.map((s) => L.esc(s.source) + " fetched " + L.esc(s.last_fetch || "never")).join(" · ") +
       ' · <button class="btn btn-ghost" type="button" data-cov="1"><span>' + D.meta.nation.districts[0] + "/" + D.meta.nation.districts[1] + " districts covered</span></button><br>Screening tool, not advice.";
-    initMap(); recomputeFinder(); initSince(); initOffline(); syncTopHeight(); window.addEventListener("resize", debounce(syncTopHeight, 100)); readUI(); renderList();
+    initMap(); recomputeFinder(); initSince(); renderFresh(); initOffline(); syncTopHeight(); window.addEventListener("resize", debounce(syncTopHeight, 100)); readUI(); renderList();
     const want = hashState(); if (want && byId.has(want)) openDrawer(want, false);
 
     ["fDis", "fSrc", "fUnit", "fAunit", "fSort", "fAge", "fCut", "fDups"].forEach((id) => $(id).addEventListener("change", refresh));
@@ -631,7 +648,13 @@
       const round = (x) => String(+(x >= 1000 ? Math.round(x / 100) * 100 : x.toPrecision(2)));
       S.f.pmin = round(+r.dataset.lo); S.f.pmax = round(+r.dataset.hi); writeUI(); refresh();
     });
-    $("btnReset").addEventListener("click", () => { S.f = { unit: "aana", aunit: "aana", sort: "price" }; renderSince(); S.profile = F.ensureRows(F.defaultProfile(), FLAGS); saveProfile(); recomputeFinder(); writeUI(); if (!$("finder").hidden) renderFinderForm(); refresh(); });
+    $("btnFilters").addEventListener("click", () => {
+      const open = document.body.classList.toggle("filters-open"); $("btnFilters").setAttribute("aria-expanded", open); syncTopHeight();
+    });
+    document.addEventListener("click", (e) => { if (e.target.closest("#emptyReset")) $("btnReset").click(); });
+    if (!store.get("jagga.welcomed", false) && !hashState() && !/(?:^|&)fp=/.test(location.hash.slice(1))) $("welcome").hidden = false;
+    $("welcomeOk").addEventListener("click", () => { $("welcome").hidden = true; store.set("jagga.welcomed", true); });
+    $("btnReset").addEventListener("click", () => { S.f = { unit: "aana", aunit: "aana", sort: "new" }; renderSince(); S.profile = F.ensureRows(F.defaultProfile(), FLAGS); saveProfile(); recomputeFinder(); writeUI(); if (!$("finder").hidden) renderFinderForm(); refresh(); });
     $("btnMore").addEventListener("click", () => { S.shown += PAGE; renderList(); });
     $("lyL").addEventListener("change", (e) => map && (e.target.checked ? layerL.addTo(map) : map.removeLayer(layerL)));
     $("lyB").addEventListener("change", (e) => map && (e.target.checked ? layerB.addTo(map).bringToBack() : map.removeLayer(layerB)));
@@ -643,10 +666,10 @@
     renderSaved();
     $("savedSel").addEventListener("change", (e) => {
       const h = saved()[e.target.value]; if (h === undefined) return;
-      S.f = Object.assign({ unit: "aana", aunit: "aana", sort: "price" }, L.parseHash("#" + h)); writeUI(); refresh();
+      S.f = Object.assign({ unit: "aana", aunit: "aana", sort: "new" }, L.parseHash("#" + h)); writeUI(); refresh();
     });
     $("btnSave").addEventListener("click", () => { openModal("save search", savedHTML()); $("saveName").focus(); });
-    $("btnWatch").addEventListener("click", () => openModal("watchlist", watchHTML()));
+    $("btnWatch").addEventListener("click", () => openModal("saved plots", watchHTML()));
     $("tabList").addEventListener("click", () => { document.body.classList.remove("show-map"); $("tabList").classList.add("on"); $("tabMap").classList.remove("on"); });
     $("tabMap").addEventListener("click", () => { document.body.classList.add("show-map"); $("tabMap").classList.add("on"); $("tabList").classList.remove("on"); if (map) setTimeout(() => map.invalidateSize(), 50); });
     initTranslate();
@@ -695,7 +718,7 @@
         Object.keys(j.watch || {}).forEach((i) => { if (byId.has(i)) S.watch[i] = String(j.watch[i]).slice(0, 20); });
         Object.keys(j.notes || {}).forEach((i) => { if (byId.has(i)) store.set("jagga.note." + i, String(j.notes[i]).slice(0, 4000)); });
         store.set("jagga.watch", S.watch); $("watchCount").textContent = Object.keys(S.watch).length; $("mBody").innerHTML = watchHTML(); renderList();
-      } catch (err) { $("mBody").insertAdjacentHTML("afterbegin", '<p class="empty">That file is not a valid watchlist export.</p>'); } });
+      } catch (err) { $("mBody").insertAdjacentHTML("afterbegin", '<p class="empty">That file is not a valid saved-plots export.</p>'); } });
     });
   }
   function debounce(fn, ms) { let t; return function () { clearTimeout(t); t = setTimeout(fn, ms); }; }
