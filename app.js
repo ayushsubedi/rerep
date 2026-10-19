@@ -5,14 +5,14 @@
   const L = window.JaggaLib, D = window.JAGGA, T = L.unitTable(D.meta.units);
   const $ = (id) => document.getElementById(id);
   const PAGE = 40;
-  const F = window.JaggaFinder, FLAGS = D.meta.flags || [];
+  const F = window.JaggaFinder, P = window.JaggaPicks, FLAGS = D.meta.flags || [];
 
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode: degrade silently */ } }
   };
 
-  const S = { f: { unit: "aana", aunit: "aana", sort: "new" }, cmp: [], shown: PAGE, sel: null, watch: store.get("jagga.watch", {}), bounds: null, fitNext: true, lastFocus: null };
+  const S = { f: { unit: "aana", aunit: "aana", sort: "new" }, cmp: [], shown: PAGE, sel: null, watch: store.get("jagga.watch", {}), bounds: null, fitNext: true, lastFocus: null, picks: false, picksY: 0, sortTouched: false };
   const byId = new Map(D.listings.map((l) => [l.id, l]));
   let FR = null, FRMAP = new Map(), PLACES = null, placesP = null, SINCE = null;       // the finder's last run, by listing id; the places picker's data (loaded on demand)
   let visible = [], map = null, layerA = null, layerS = null, layerL = null, layerH = null, layerC = null, layerB = null, markers = new Map(), clusterOf = new Map(), canvas = null, hovId = null, hovTimer = 0;
@@ -63,11 +63,11 @@
     $("fAmin").value = f.amin || ""; $("fAmax").value = f.amax || ""; $("fRoad").value = f.road || "";
     $("fAge").value = f.age || ""; $("fCut").checked = !!f.cut; $("fDups").checked = !!f.dups; $("fSort").value = f.sort || "new";
   }
-  function hashState() { const m = /(?:^|&)l=([0-9a-f]+)/.exec(location.hash.slice(1)); return m ? m[1] : null; }
+  function hashState(h) { const m = /(?:^|&)l=([0-9a-f]+)/.exec(h == null ? location.hash.slice(1) : h); return m ? m[1] : null; }
   function pushHash() {
     const fp = F.activeIds(S.profile, FLAGS).length ? "fp=" + F.encode(S.profile) : "";          // the finder rides in the link only when it has criteria
-    const h = [L.toHash(S.f), S.sel ? "l=" + S.sel : "", fp].filter(Boolean).join("&");
-    history.replaceState(null, "", h ? "#" + h : location.pathname + location.search);
+    const h = [L.toHash(S.f), S.sel ? "l=" + S.sel : "", S.picks && !S.sel ? "picks" : "", fp].filter(Boolean).join("&");
+    history.replaceState(history.state, "", h ? "#" + h : location.pathname + location.search);
   }
 
   // ---------- list ----------
@@ -133,8 +133,40 @@
       '<li class="empty"><b>No listings match these filters.</b> Try removing one, or <button class="btn btn-outline" type="button" id="emptyReset"><span>Clear all filters</span></button><br>Most ads are in the Kathmandu valley; <button class="btn btn-ghost" type="button" data-cov="1"><span>see where data exists</span></button>.</li>';
     $("btnMore").hidden = visible.length <= S.shown;
     $("btnMore").firstElementChild.textContent = "Show more (" + (visible.length - S.shown) + " left)";
+    renderChips();
     renderMap();
     pushHash();
+  }
+
+  // ---------- what is filtering the list, as chips you can take off one by one ----------
+  const DUPS = D.listings.filter((l) => l.dup).length;
+  const nfmt = (v) => Number(v).toLocaleString("en-US");
+  function activeChips() {
+    const f = S.f, out = [], add = (key, text) => out.push({ key, text }), u = UNIT_LABEL[f.unit] || "aana";
+    if (f.q) add("q", "\u201c" + f.q + "\u201d");
+    if (f.dis) add("dis", dname(f.dis));
+    if (f.src) add("src", f.src);
+    if (f.pmin || f.pmax) add("price", "Price " + (f.pmin && f.pmax ? nfmt(f.pmin) + " to " + nfmt(f.pmax) : f.pmin ? "from " + nfmt(f.pmin) : "up to " + nfmt(f.pmax)) + " Rs/" + u);
+    if (f.amin || f.amax) add("area", "Area " + (f.amin && f.amax ? f.amin + " to " + f.amax : f.amin ? "at least " + f.amin : "at most " + f.amax) + " " + (UNIT_LABEL[f.aunit] || "aana"));
+    if (f.road) add("road", "Road " + f.road + " ft or wider");
+    if (f.age) add("age", "Posted in the last " + f.age + " days");
+    if (f.cut) add("cut", "Price cut");
+    if ($("fMapOnly").checked) add("maponly", "Inside the map view");
+    if (FR) add("finder", "My finder: " + FR.counts[3] + " match" + (FR.counts[2] ? ", " + FR.counts[2] + " possible" : ""));
+    return out;
+  }
+  function renderChips() {
+    const el = $("activeChips"), chips = activeChips(), dup = !S.f.dups && DUPS ? '<span class="dim">' + nfmt(DUPS) + ' likely duplicates hidden · <button type="button" class="linkish" data-showdups="1">show them</button></span>' : "";
+    el.hidden = !chips.length && !dup;
+    el.innerHTML = chips.map((c) => '<button type="button" class="fchip" data-clear="' + c.key + '" aria-label="Remove filter: ' + L.esc(c.text) + '"><span>' + L.esc(c.text) + '</span><b aria-hidden="true">✕</b></button>').join("") +
+      (chips.length > 1 ? '<button type="button" class="linkish" data-clearall="1">Clear all</button>' : "") + dup;
+  }
+  function clearChip(key) {
+    const f = S.f;
+    if (key === "q") f.q = ""; else if (key === "dis") f.dis = ""; else if (key === "src") f.src = ""; else if (key === "price") f.pmin = f.pmax = ""; else if (key === "area") f.amin = f.amax = "";
+    else if (key === "road") f.road = ""; else if (key === "age") f.age = ""; else if (key === "cut") f.cut = false; else if (key === "maponly") $("fMapOnly").checked = false;
+    else if (key === "finder") { S.fon = false; store.set("jagga.fon", false); recomputeFinder(); if (!$("finder").hidden) renderFinderForm(); }
+    writeUI(); S.shown = PAGE; S.fitNext = true; renderList();
   }
 
   // ---------- map ----------
@@ -157,7 +189,7 @@
     });
     layerA = window.L.layerGroup().addTo(map); window.JAGGA_ANCHORS = layerA;       // exposed for the browser test, like JAGGA_MAP
     window.JAGGA_MAP = map; window.JAGGA_HOVER = layerH; window.JAGGA_MARKERS = () => markers; map.on("zoomend", drawMarkers); map.on("click", onMapClick);
-    map.on("moveend", () => { const b = map.getBounds(); S.bounds = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()]; if ($("fMapOnly").checked && !S.fitNext) { S.shown = PAGE; renderList(); } S.fitNext = false; });
+    map.on("moveend", () => { if (!mapShown()) return; const b = map.getBounds(); S.bounds = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()]; if ($("fMapOnly").checked && !S.fitNext) { S.shown = PAGE; renderList(); } S.fitNext = false; });
   }
   // ---------- map: distance clustering, recomputed on zoom (no library) ----------
   const CELL = 56;                                   // px: listings closer than this on screen merge into one numbered circle
@@ -209,7 +241,8 @@
     drawMarkers();
   }
   /** The selected listing gets its own pin on a separate layer, so it stays visible even when clustering hides its marker. */
-  function settleMap() { if (map) setTimeout(() => map.invalidateSize(), 60); }       // the map column changes width when the X-Ray opens or closes
+  const mapShown = () => !!map && map.getContainer().offsetWidth > 0 && map.getContainer().offsetHeight > 0;      // hidden (the shortlist page, a phone's list tab): Leaflet cannot measure it
+  function settleMap() { if (map) setTimeout(() => { if (mapShown()) map.invalidateSize(); }, 60); }       // the map column changes width when the X-Ray opens or closes
   function pinSelected() {
     if (!layerS) return;
     layerS.clearLayers();
@@ -256,6 +289,49 @@
     if (on && from === "pin" && card) hovTimer = setTimeout(() => revealCard(card), 160);
   }
 
+  // ---------- navigation: Back closes what is open, one layer at a time (the browser's button, a phone's, or the arrow in a panel) ----------
+  const NAV = { n: 0, popping: false };
+  const navKind = () => (history.state && history.state.app ? history.state.v : null);
+  const NAV_REPLACES = { modal: ["modal"], plot: ["plot", "finder", "modal"], finder: ["plot", "finder", "modal"], picks: ["plot", "finder", "modal", "picks"] };
+  /** An overlay opens. One history entry per overlay (opening a second replaces the first); a plot or the finder opened FROM the shortlist stacks on it, so Back returns there. */
+  function enter(v, id) {
+    if (NAV.popping) return;
+    const cur = navKind(), st = { app: 1, v: v, id: id || null, n: NAV.n };
+    if (cur && NAV_REPLACES[v].indexOf(cur) >= 0) history.replaceState(st, "", location.href);
+    else { st.n = ++NAV.n; history.pushState(st, "", location.href); }
+  }
+  /** The user closes an overlay: unwind its history entry and let the popstate do the closing, so the Back button and the close button are one thing. */
+  function leave(kind) { if (NAV.popping || navKind() !== kind) return false; history.back(); return true; }
+  function applyView(st) {
+    if ($("modal").open) $("modal").close();
+    if (st.v === "plot" && st.id && byId.has(st.id)) {
+      if (!$("finder").hidden) hideFinder();
+      if ($("drawer").hidden || S.sel !== st.id) openDrawer(st.id, false);
+    } else if (st.v === "finder") { closeDrawerNow(); if ($("finder").hidden) openFinder(); }
+    else if (st.v === "picks") { closeDrawerNow(); if (!$("finder").hidden) hideFinder(); showPicks(); }
+    else { closeDrawerNow(); if (!$("finder").hidden) hideFinder(); hidePicks(); }
+  }
+  window.addEventListener("popstate", (e) => {
+    const st = e.state && e.state.app ? e.state : { v: "list", n: 0 };
+    NAV.n = st.n || 0; NAV.popping = true;
+    try { applyView(st); } finally { NAV.popping = false; }
+  });
+  /** Filters back to nothing, finder switched off (its criteria are kept), every panel shut, list at the top and the map on all the ads. */
+  function resetFilters() {
+    S.f = { unit: "aana", aunit: "aana", sort: "new" }; S.sortTouched = false; S.tiers = { 3: true, 2: true, 1: false };
+    S.fon = false; store.set("jagga.fon", false); $("fMapOnly").checked = false;
+    recomputeFinder(); writeUI(); renderSince(); if (!$("finder").hidden) renderFinderForm();
+    S.shown = PAGE; S.fitNext = true; renderList();
+  }
+  function goHome() {
+    NAV.popping = true;
+    try { if ($("modal").open) $("modal").close(); closeDrawerNow(); hideFinder(); hidePicks(); } finally { NAV.popping = false; }
+    document.body.classList.remove("filters-open", "show-map"); $("tabList").classList.add("on"); $("tabMap").classList.remove("on"); $("tabPicks").classList.remove("on");
+    resetFilters();
+    history.replaceState({ app: 0 }, "", location.pathname + location.search); NAV.n = 0;
+    window.scrollTo(0, 0);
+  }
+
   // ---------- drawer ----------
   /** The listing under MY finder: every criterion I switched on, pass / fail / unknown, with the ad's evidence. */
   function finderCheck(l) {
@@ -277,6 +353,8 @@
     if (!$("finder").hidden) hideFinder();                 // the finder and the X-Ray share the left side: opening a plot puts the finder away (its criteria stay)
     if ($("drawer").hidden) S.lastFocus = document.activeElement;
     S.sel = id; updateStepper(id);
+    if (S.picks && $("drawer").hidden) S.picksY = window.scrollY;           // coming from the shortlist: Back returns to the same place in it
+    enter("plot", id);
     $("dBody").innerHTML = '<h2 id="dTitle">' + L.esc(L.niceTitle(l.t)) + '</h2><p class="foot" role="status">Loading details…</p>';
     $("drawer").hidden = false; document.body.classList.add("sel-open"); settleMap(); $("dClose").focus();
     loadDetail([id]).then(() => { if (S.sel === id) renderDrawer(id, fromMap); },
@@ -342,13 +420,20 @@
       b.href = "https://" + h.replace(/-/g, "--").replace(/\./g, "-") + ".translate.goog" + location.pathname + "?_x_tr_sl=en&_x_tr_tl=ne&_x_tr_hl=en&_x_tr_pto=wapp" + location.hash;
     }
   }
-  function closeDrawer() {
+  function closeDrawerNow() {
     $("drawer").hidden = true; document.body.classList.remove("sel-open"); settleMap(); S.sel = null; pinSelected(); document.querySelectorAll(".card.sel").forEach((c) => c.classList.remove("sel"));
     if (S.lastFocus && document.contains(S.lastFocus)) S.lastFocus.focus(); pushHash();
   }
+  function closeDrawer() { if (!leave("plot")) closeDrawerNow(); }
 
   // ---------- modals ----------
-  function openModal(title, html) { $("mTitle").textContent = title.charAt(0).toUpperCase() + title.slice(1); $("mBody").innerHTML = html; $("modal").showModal(); }
+  function openModal(title, html) { $("mTitle").textContent = title.charAt(0).toUpperCase() + title.slice(1); $("mBody").innerHTML = html; $("modal").showModal(); enter("modal", title); }
+  /** Close the dialog and, unless another one opens at once (`keepEntry`), drop its history entry so Back does not stop on a dialog that is gone. */
+  function closeModal(keepEntry) {
+    if (!$("modal").open) return;
+    $("modal").close();
+    if (!keepEntry && navKind() === "modal" && !NAV.popping) history.back();
+  }
   function coverageHTML() {
     const m = D.meta, n = m.nation, max = Math.max.apply(null, m.districts.map((d) => d.n).concat([1]));
     const have = new Set(m.districts.map((d) => d.district_id));
@@ -401,7 +486,7 @@
   function refresh() { readUI(); S.shown = PAGE; S.fitNext = true; renderList(); }
   function syncTopHeight() {            // header height varies with viewport; the map pane and drawer anchor to it
     const h = document.querySelector("header.top").getBoundingClientRect().height;
-    document.documentElement.style.setProperty("--top-h", Math.round(h) + "px"); if (map) map.invalidateSize();
+    document.documentElement.style.setProperty("--top-h", Math.round(h) + "px"); if (mapShown()) map.invalidateSize();
   }
   // ---------- saved searches (browser-local; the filter state is already a URL hash, so a search is just that string) ----------
   const saved = () => store.get("jagga.saved", {});
@@ -461,8 +546,8 @@
     loadDetail(ids).then(() => { w.document.open(); w.document.write(shortlistHTML(ids)); w.document.close(); w.focus(); setTimeout(() => w.print(), 300); },
       () => { w.document.body.textContent = "Could not load the listing details."; });
   }
-  function copyLink() {
-    const done = () => { $("dBody").insertAdjacentHTML("afterbegin", '<p class="judge" role="status">Link copied.</p>'); };
+  function copyLink(where) {
+    const done = () => { if (where) where.textContent = "Link copied."; else $("dBody").insertAdjacentHTML("afterbegin", '<p class="judge" role="status">Link copied.</p>'); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(location.href).then(done, () => window.prompt("Copy this link:", location.href));
     else window.prompt("Copy this link:", location.href);
   }
@@ -479,6 +564,15 @@
     FRMAP = new Map(FR ? FR.items.map((it) => [it.l.id, it]) : []);
     $("finderCount").textContent = FR ? "· " + FR.counts[3] + " match" : "";
     drawAnchors();
+    syncFit();
+  }
+  /** "Best fit" is the finder's order, so it means nothing without criteria: say so, and switch to it by itself the first time criteria exist (until the reader picks an order). */
+  function syncFit() {
+    const opt = $("fSort").querySelector('option[value="fit"]'); if (!opt) return;
+    const has = F.activeIds(S.profile, FLAGS).length > 0;
+    opt.disabled = !FR; opt.textContent = FR ? "Best fit to my criteria" : has ? "Best fit (turn My finder on)" : "Best fit (set My finder first)";
+    if (FR && !S.sortTouched && S.f.sort !== "fit") { S.f.sort = "fit"; $("fSort").value = "fit"; }
+    else if (!FR && S.f.sort === "fit") { S.f.sort = "new"; $("fSort").value = "new"; }
   }
   /** The places chosen under "near": a circle each, so the radius is visible on the map. */
   function drawAnchors() {
@@ -560,12 +654,13 @@
     S.shown = PAGE; S.fitNext = true; renderList();
   }
   function openFinder() {
-    if (!$("drawer").hidden) closeDrawer();
-    $("finder").hidden = false; document.body.classList.add("finder-open"); settleMap(); $("btnFinder").setAttribute("aria-expanded", "true"); renderFinderForm();
+    if (!$("drawer").hidden) closeDrawerNow();
+    if (S.picks) S.picksY = window.scrollY;
+    $("finder").hidden = false; document.body.classList.add("finder-open"); settleMap(); $("btnFinder").setAttribute("aria-expanded", "true"); renderFinderForm(); enter("finder");
     const first = $("fBody").querySelector("input,select"); if (first) first.focus();
   }
   function hideFinder() { $("finder").hidden = true; document.body.classList.remove("finder-open"); settleMap(); $("btnFinder").setAttribute("aria-expanded", "false"); }
-  function closeFinder() { hideFinder(); $("btnFinder").focus(); }
+  function closeFinder() { if (!leave("finder")) { hideFinder(); $("btnFinder").focus(); } }
   function addPlace(p) {
     const r = S.profile.rows.near; if (r.places.length >= F.MAX_PLACES || r.places.some((x) => x.n === p.n && x.lat === p.lat && x.lon === p.lon)) return;
     r.places.push(p); r.on = true; finderChanged(true);
@@ -628,6 +723,88 @@
     const starred = Object.keys(S.watch).filter((i) => byId.has(i));
     if (navigator.onLine && starred.length) loadDetail(starred).catch(() => {});
   }
+  // ---------- shortlist: the plots that fit, in plain words (the same finder, a quieter page) ----------
+  const picksRun = () => (F.activeIds(S.profile, FLAGS).length ? (FR || F.run(D.listings, S.profile, fctx())) : null);
+  const mark = { pass: "✓", fail: "✗", unknown: "?" };
+  const pm = (v) => L.fmtMoney(v);
+  function pickCard(it, n) {
+    const l = it.l, checks = it.results.map((x) => '<li class="' + x.s + '"><b class="mk">' + mark[x.s] + '</b><span class="cl2">' + L.esc(x.label) + (x.must ? "" : " <small>(nice to have)</small>") +
+      '</span><span class="ev">' + L.esc(x.e) + "</span></li>").join("");
+    const starred = !!S.watch[l.id];
+    return '<article class="pk" data-id="' + l.id + '"><header><span class="pk-n">' + n + '</span><div class="pk-t"><h3><button type="button" data-open="' + l.id + '">' + L.esc(L.niceTitle(l.t)) + "</button></h3>" +
+      '<p class="pk-where">' + L.esc(placeText(l)) + " · " + L.esc(l.src) + " · " + L.esc(L.whenText(l)) + "</p></div>" +
+      '<div class="pk-price"><b>' + L.esc(priceText(l)) + "</b><small>" + (l.p != null ? "/" + UNIT_LABEL[S.f.unit] + (l.tot ? " · " + L.esc(pm(l.tot)) + " total" : "") : "") + "</small></div></header>" +
+      '<p class="pk-facts">' + L.esc(areaText(l)) + (l.road ? " · " + l.road + " ft road" : "") + "</p>" +
+      '<ul class="pk-checks">' + checks + "</ul>" +
+      '<details class="pk-askd" data-ask="' + l.id + '"><summary>What to ask before you pay</summary><div class="pk-ask">Loading…</div></details>' +
+      '<p class="pk-actions"><button class="btn btn-primary" type="button" data-open="' + l.id + '"><span>Full details</span></button> <a class="btn btn-outline" href="' + L.esc(L.safeUrl(l.url)) +
+      '" target="_blank" rel="noopener noreferrer"><span>Original ad ↗</span></a> <button class="btn btn-outline" type="button" data-star="' + l.id + '" aria-pressed="' + starred + '"><span>' + (starred ? "★ Saved" : "☆ Save") + "</span></button></p></article>";
+  }
+  function picksHTML() {
+    const run = picksRun(), back = '<button class="btn btn-ghost pk-back" type="button" data-pkback="1"><span>← All ads</span></button>';
+    const saved_ = Object.keys(S.watch).filter((i) => byId.has(i));
+    const savedBlock = saved_.length ? '<section class="pk-sec"><h2>Saved plots <small>' + saved_.length + '</small></h2><ul class="pk-saved">' + saved_.map((i) => { const l = byId.get(i);
+      return '<li><button type="button" class="linkish" data-open="' + i + '">' + L.esc(L.niceTitle(l.t)) + "</button><span>" + L.esc(priceText(l)) + "</span><span class=\"dim\">" + L.esc(placeText(l)) + "</span></li>"; }).join("") + "</ul></section>" : "";
+    if (!run) {
+      return '<div class="pk-top">' + back + '</div><p class="pk-eyebrow">Shortlist</p><h1>What are you looking for?</h1>' +
+        '<p class="pk-lede">Say what you want in a few clicks and this page shows the plots that fit, with the reason for each, and what to ask the seller. Your answers stay in this browser.</p>' +
+        '<div class="pk-presets">' + F.PRESETS.map((x) => '<button type="button" class="pk-preset" data-pkpreset="' + x.id + '"><b>' + L.esc(x.label) + "</b><span>" + L.esc(x.blurb) + "</span></button>").join("") + "</div>" +
+        '<p><button class="btn btn-outline" type="button" data-pkbuild="1"><span>Set my own criteria</span></button></p>' + savedBlock;
+    }
+    const asked = P.describe(S.profile, FLAGS, F, { money: pm, district: dname }), v = P.verdict(run), secs = P.sections(run, F, S.picksN || 12);
+    const list = (xs, empty) => xs.length ? "<ul>" + xs.map((x) => "<li>" + L.esc(x.text) + "</li>").join("") + "</ul>" : '<p class="dim">' + empty + "</p>";
+    const total = Math.max(1, run.funnel[0].left);
+    const funnel = '<ol class="pk-funnel">' + run.funnel.map((f, i) => '<li' + (f.left === 0 ? ' class="zero"' : "") + '><span class="pk-fl">' + (i ? "and " : "") + L.esc(f.label) + (f.unknown ? " <small>(" + nfmt(f.unknown) + " unknown)</small>" : "") +
+      '</span><span class="pk-fb"><i style="width:' + Math.max(0.6, f.left / total * 100).toFixed(1) + '%"></i></span><span class="pk-fn">' + nfmt(f.left) + "</span></li>").join("") + "</ol>";
+    let n = 0;
+    const shown = secs.reduce((a, x) => a + x.items.length, 0), more = run.counts[3] + run.counts[2] + (secs.some((x) => x.tier === 1) ? run.counts[1] : 0);
+    const cards = secs.map((sec) => '<section class="pk-sec"><h2>' + L.esc(sec.label) + " <small>" + sec.total + "</small></h2>" + sec.items.map((it) => pickCard(it, ++n)).join("") + "</section>").join("");
+    return '<div class="pk-top">' + back + '<button class="btn btn-outline" type="button" data-pkbuild="1"><span>Change my criteria</span></button></div>' +
+      '<p class="pk-eyebrow">Shortlist' + (S.profile.name ? " · " + L.esc(S.profile.name) : "") + " · " + nfmt(run.funnel[0].left) + " ads checked</p>" +
+      '<section class="pk-verdict ' + v.tone + '"><h1>' + L.esc(v.head) + "</h1>" + v.lines.map((x) => "<p>" + L.esc(x) + "</p>").join("") + "</section>" +
+      '<div class="pk-two"><section class="pk-panel"><h2>Must-haves <small>all of these</small></h2>' + list(asked.musts, "none: every ad is a candidate") + '</section>' +
+      '<section class="pk-panel"><h2>Nice to have <small>they raise a plot, never remove it</small></h2>' + list(asked.wishes, "none") + "</section></div>" +
+      '<section class="pk-sec"><h2>How the ads narrowed</h2>' + funnel + '<p class="pk-note">An ad moves down a step only when the ad itself proves the rule. Where it says nothing, it stops and is counted as unknown, never guessed.</p></section>' +
+      (cards || '<section class="pk-sec"><p class="empty">Nothing to show yet. Loosen a must-have in My finder and this list fills in.</p></section>') +
+      (more > shown ? '<p class="pk-more"><button class="btn btn-outline" type="button" data-pkmore="1"><span>Show more (' + (more - shown) + " left)</span></button></p>" : "") +
+      savedBlock +
+      '<section class="pk-sec pk-share"><h2>Share this shortlist</h2><p>The link carries your criteria, so whoever opens it sees this same page. Nothing is stored on a server.</p>' +
+      '<p><button class="btn btn-outline" type="button" data-pkcopy="1"><span>Copy link</span></button> <span class="pk-copied" role="status"></span></p></section>' +
+      '<p class="pk-note">Screening only, not advice. A tick means the ad or the data shows it; a question mark means the ad does not say; a cross means it fails. There is no score. Check the lalpurja, the road and the boundaries in person.</p>';
+  }
+  function renderPicks() { $("pkBody").innerHTML = picksHTML(); }
+  function showPicks() {
+    if (!$("drawer").hidden) closeDrawerNow();
+    if (!$("finder").hidden) hideFinder();
+    const was = S.picks;
+    S.picks = true; document.body.classList.add("picks-open"); $("picks").hidden = false; renderPicks();
+    $("tabPicks").classList.add("on"); $("tabList").classList.remove("on"); $("tabMap").classList.remove("on"); document.body.classList.remove("show-map");
+    syncTopHeight(); window.scrollTo(0, was ? S.picksY : 0); enter("picks"); pushHash();
+  }
+  function hidePicks() {
+    if (!S.picks) return;
+    S.picks = false; $("picks").hidden = true; document.body.classList.remove("picks-open"); $("tabPicks").classList.remove("on"); $("tabList").classList.add("on"); syncTopHeight();
+  }
+  function closePicks() { if (!leave("picks")) { hidePicks(); pushHash(); } }
+  function picksEvents() {
+    const root = $("pkBody");
+    root.addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      const d = b.dataset;
+      if (d.pkback) closePicks();
+      else if (d.pkbuild) openFinder();
+      else if (d.pkpreset) { S.profile = F.applyPreset(d.pkpreset, FLAGS); S.fon = true; store.set("jagga.fon", true); finderChanged(true); if (!S.sortTouched) { S.f.sort = "fit"; writeUI(); } renderPicks(); }
+      else if (d.pkmore) { S.picksN = (S.picksN || 12) + 12; const y = window.scrollY; renderPicks(); window.scrollTo(0, y); }
+      else if (d.pkcopy) { pushHash(); copyLink(root.querySelector(".pk-copied")); }
+      else if (d.star) { e.stopPropagation(); toggleWatch(d.star); const y = window.scrollY; renderPicks(); window.scrollTo(0, y); }
+    });
+    root.addEventListener("toggle", (e) => {                       // the seller questions load when asked for: they live in the detail shards
+      const t = e.target; if (!t.dataset || !t.dataset.ask || !t.open) return;
+      loadDetail([t.dataset.ask]).then(() => { const dt = detailOf(t.dataset.ask); t.querySelector(".pk-ask").innerHTML = dt.ask && dt.ask.length ? '<ol class="factors">' + L.askHTML(dt.ask) + "</ol>" : '<p class="dim">Nothing specific to add for this plot beyond the usual: lalpurja, road, boundaries.</p>'; },
+        () => { t.querySelector(".pk-ask").textContent = "Could not load these. Check your connection and try again."; });
+    }, true);
+  }
+
   // ---------- price guide: what sellers ask per place, with the reported government rate beside it ----------
   const GS = { size: "all", sort: "n", q: "" };
   let guideP = null;
@@ -685,7 +862,7 @@
     root.addEventListener("click", (e) => {
       const b = e.target.closest("[data-gshow]"); if (!b) return;
       const r = window.JAGGA_GUIDE.rows.find((x) => x.id === b.dataset.gshow); if (!r) return;
-      S.f.dis = r.district_id || ""; S.f.q = r.level === "district" ? "" : r.name; writeUI(); $("modal").close(); refresh();
+      S.f.dis = r.district_id || ""; S.f.q = r.level === "district" ? "" : r.name; writeUI(); closeModal(); refresh();
     });
   }
 
@@ -724,17 +901,22 @@
     const cuts = D.listings.filter((l) => L.isCut(l)).length;     // honest filter: no genuine seller price cut observed yet => say so
     if (!cuts) { $("fCut").disabled = true; $("fCut").parentElement.title = "No seller price cut has been observed yet; this fills in as listings are re-checked over time."; $("fCut").nextElementSibling.textContent = "Price cut (none seen yet)"; }
     S.profile = loadProfile(); S.tiers = { 3: true, 2: true, 1: false }; S.fon = store.get("jagga.fon", true); S.pick = false;
+    const BOOT = location.hash.slice(1);                         // read once: starting the finder and the list rewrites the fragment (pushHash) before the deep link below is looked at
     Object.assign(S.f, L.parseHash(location.hash));
+    S.sortTouched = /(?:^|&)sort=/.test(BOOT);                // an order chosen in a shared link stays
     if (S.f.fresh) { S.f.age = "7"; delete S.f.fresh; }          // old shared links used fresh=1 ("new this week")
     writeUI();
     $("watchCount").textContent = Object.keys(S.watch).length;
     $("foot").innerHTML = "Built " + L.esc(D.meta.built_at) + " · " + D.meta.sources.map((s) => L.esc(s.source) + " fetched " + L.esc(s.last_fetch || "never")).join(" · ") +
       ' · <button class="btn btn-ghost" type="button" data-cov="1"><span>' + D.meta.nation.districts[0] + "/" + D.meta.nation.districts[1] + " districts covered</span></button><br>Screening tool, not advice.";
     initMap(); recomputeFinder(); initSince(); renderFresh(); initOffline(); syncTopHeight(); window.addEventListener("resize", debounce(syncTopHeight, 100)); readUI(); renderList();
-    const want = hashState(); if (want && byId.has(want)) openDrawer(want, false);
+    const want = hashState(BOOT); if (want && byId.has(want)) openDrawer(want, false);
+    else if (/(?:^|&)picks(?:&|$)/.test(BOOT)) showPicks();
 
+
+    $("fSort").addEventListener("change", () => { S.sortTouched = true; });
     ["fDis", "fSrc", "fUnit", "fAunit", "fSort", "fAge", "fCut", "fDups"].forEach((id) => $(id).addEventListener("change", refresh));
-    finderEvents(); $("btnFinder").addEventListener("click", () => ($("finder").hidden ? openFinder() : closeFinder())); $("fClose").addEventListener("click", closeFinder);
+    finderEvents(); $("btnFinder").addEventListener("click", () => ($("finder").hidden ? openFinder() : closeFinder())); $("fClose").addEventListener("click", closeFinder); $("fBack").addEventListener("click", closeFinder);
     ["fPmin", "fPmax", "fAmin", "fAmax", "fRoad"].forEach((id) => $(id).addEventListener("input", debounce(refresh, 250)));
     $("q").addEventListener("input", debounce(refresh, 200)); $("searchForm").addEventListener("submit", (e) => { e.preventDefault(); refresh(); });
     $("fMapOnly").addEventListener("change", () => { S.shown = PAGE; renderList(); });
@@ -747,19 +929,23 @@
     if (window.matchMedia("(max-width: 900px)").matches) $("moreFilters").open = true;                  // on a phone the filters panel shows everything
     document.addEventListener("click", (e) => { const m = $("moreFilters"); if (m.open && !m.contains(e.target) && !window.matchMedia("(max-width: 900px)").matches) m.open = false; });
     $("btnMenu").addEventListener("click", openMenu);
-    $("mBody").addEventListener("click", (e) => { const b = e.target.closest("[data-menu]"); if (b) { $("modal").close(); $(b.dataset.menu).click(); } });
+    $("mBody").addEventListener("click", (e) => { const b = e.target.closest("[data-menu]"); if (b) { closeModal(true); $(b.dataset.menu).click(); } });
     $("btnFilters").addEventListener("click", () => {
       const open = document.body.classList.toggle("filters-open"); $("btnFilters").setAttribute("aria-expanded", open); syncTopHeight();
     });
     document.addEventListener("click", (e) => { if (e.target.closest("#emptyReset")) $("btnReset").click(); });
-    if (!store.get("jagga.welcomed", false) && !hashState() && !/(?:^|&)fp=/.test(location.hash.slice(1))) $("welcome").hidden = false;
+    if (!store.get("jagga.welcomed", false) && !hashState(BOOT) && !/(?:^|&)(fp=|picks(?:&|$))/.test(BOOT)) $("welcome").hidden = false;
     $("welcomeOk").addEventListener("click", () => { $("welcome").hidden = true; store.set("jagga.welcomed", true); });
-    $("btnReset").addEventListener("click", () => { S.f = { unit: "aana", aunit: "aana", sort: "new" }; renderSince(); S.profile = F.ensureRows(F.defaultProfile(), FLAGS); saveProfile(); recomputeFinder(); writeUI(); if (!$("finder").hidden) renderFinderForm(); refresh(); });
+    $("btnReset").addEventListener("click", resetFilters);
+    $("brand").addEventListener("click", (e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return; e.preventDefault(); goHome(); });
+    $("btnPicks").addEventListener("click", () => (S.picks ? closePicks() : showPicks())); $("tabPicks").addEventListener("click", () => (S.picks ? closePicks() : showPicks()));
+    $("activeChips").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.clear) clearChip(b.dataset.clear); else if (b.dataset.clearall) resetFilters(); else if (b.dataset.showdups) { S.f.dups = true; writeUI(); refresh(); } });
+    picksEvents();
     $("btnMore").addEventListener("click", () => { S.shown += PAGE; renderList(); });
     $("lyL").addEventListener("change", (e) => map && (e.target.checked ? layerL.addTo(map) : map.removeLayer(layerL)));
     $("lyB").addEventListener("change", (e) => map && (e.target.checked ? layerB.addTo(map).bringToBack() : map.removeLayer(layerB)));
     $("lyC").addEventListener("change", (e) => map && (e.target.checked ? layerC.addTo(map) : map.removeLayer(layerC)));
-    $("dClose").addEventListener("click", closeDrawer); $("mClose").addEventListener("click", () => $("modal").close());
+    $("dClose").addEventListener("click", closeDrawer); $("dBack").addEventListener("click", closeDrawer); $("mClose").addEventListener("click", () => closeModal()); $("modal").addEventListener("cancel", (e) => { e.preventDefault(); closeModal(); });
     $("btnCoverage").addEventListener("click", () => openModal("coverage", coverageHTML()));
     $("btnAbout").addEventListener("click", () => openModal("about", aboutHTML()));
     $("btnCompare").addEventListener("click", () => { openModal("compare", '<p class="foot" role="status">Loading…</p>'); loadDetail(S.cmp).then(() => { $("mBody").innerHTML = compareHTML(); }, () => { $("mBody").innerHTML = '<p class="empty">Could not load the details.</p>'; }); });
@@ -770,8 +956,8 @@
     });
     $("btnSave").addEventListener("click", () => { openModal("save search", savedHTML()); $("saveName").focus(); });
     $("btnWatch").addEventListener("click", () => openModal("saved plots", watchHTML()));
-    $("tabList").addEventListener("click", () => { document.body.classList.remove("show-map"); $("tabList").classList.add("on"); $("tabMap").classList.remove("on"); });
-    $("tabMap").addEventListener("click", () => { document.body.classList.add("show-map"); $("tabMap").classList.add("on"); $("tabList").classList.remove("on"); if (map) setTimeout(() => map.invalidateSize(), 50); });
+    $("tabList").addEventListener("click", () => { if (S.picks) closePicks(); document.body.classList.remove("show-map"); $("tabList").classList.add("on"); $("tabMap").classList.remove("on"); });
+    $("tabMap").addEventListener("click", () => { if (S.picks) hidePicks(); document.body.classList.add("show-map"); $("tabMap").classList.add("on"); $("tabList").classList.remove("on"); if (map) setTimeout(() => map.invalidateSize(), 50); });
     initTranslate();
     $("dPrev").addEventListener("click", () => step(-1)); $("dNext").addEventListener("click", () => step(1));
     document.addEventListener("keydown", (e) => {
@@ -788,7 +974,7 @@
       const t = e.target.closest("[data-star],[data-cmp],[data-open],[data-showmap],[data-cov],[data-export],.card"); if (!t) return;
       if (t.dataset.cmp) { e.stopPropagation(); toggleCompare(t.dataset.cmp); }
       else if (t.dataset.star) { e.stopPropagation(); toggleWatch(t.dataset.star); }
-      else if (t.dataset.open) { if ($("modal").open) $("modal").close(); openDrawer(t.dataset.open, false); }
+      else if (t.dataset.open) { closeModal(true); openDrawer(t.dataset.open, false); }
       else if (t.dataset.showmap) {                      // phones: leave the X-Ray, open the map tab on this listing, keep its pin
         const id = t.dataset.showmap, l = byId.get(id);
         $("drawer").hidden = true; document.body.classList.remove("sel-open"); $("tabMap").click();
@@ -806,7 +992,7 @@
     document.addEventListener("submit", (e) => {
       if (e.target.id !== "saveForm") return;
       e.preventDefault(); const name = $("saveName").value.trim(); if (!name) return;
-      const all = saved(); all[name] = L.toHash(S.f); store.set("jagga.saved", all); renderSaved(); $("savedSel").value = name; $("modal").close();
+      const all = saved(); all[name] = L.toHash(S.f); store.set("jagga.saved", all); renderSaved(); $("savedSel").value = name; closeModal();
     });
     document.addEventListener("click", (e) => {
       const d = e.target.closest("[data-delsaved]");
