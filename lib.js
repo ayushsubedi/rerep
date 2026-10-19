@@ -64,6 +64,14 @@
     return parts.map(function (n, i) { return n ? n + " " + names[i] : ""; }).filter(Boolean).join(" ");
   }
 
+  /** Sellers often type titles in capitals ('LAND ON SALE AT CHAPAGAUN'): shown in plain title case. Mixed-case titles are left as written. */
+  function niceTitle(t) {
+    const s = String(t || ""), letters = s.replace(/[^A-Za-z]/g, "");
+    if (letters.length < 8 || letters.replace(/[^A-Z]/g, "").length / letters.length < 0.65) return s;
+    const small = { at: 1, in: 1, on: 1, of: 1, for: 1, and: 1, the: 1, to: 1, with: 1, near: 1 };
+    return s.toLowerCase().replace(/[a-z][a-z']*/g, function (w, i) { return i > 0 && small[w] ? w : w.charAt(0).toUpperCase() + w.slice(1); });
+  }
+
   /** "today", "yesterday", "5 days ago", "3 weeks ago", "4 months ago", "2.8 years ago". */
   function relTime(days) {
     if (days == null) return "";
@@ -97,6 +105,33 @@
     if (newest > 72) return { stale: true, text: "Data last refreshed " + say(newest) + ". Ads posted, removed or re-priced since then are missing.", detail: detail };
     if (old.length) return { stale: true, text: "Data refreshed " + say(newest) + ", but " + old.map(function (r) { return r.source + " was last checked " + say(r.hours); }).join(", ") + ".", detail: detail };
     return { stale: false, text: "Data refreshed " + say(newest), detail: detail };
+  }
+
+  /** The price guide as display rows. g: window.JAGGA_GUIDE; o: {size: "all"|"small", sort: "n"|"high"|"low"|"name", q, unit, T}.
+   *  Values arrive as NPR per m2 and are shown per the chosen unit. A place with fewer than g.min_asks asks gets its count and a grey 'too few', no range. */
+  function guideRows(g, o) {
+    const per = function (v) { return fmtMoney(perUnit(v, o.unit, o.T)); };
+    const q = (o.q || "").trim().toLowerCase();
+    const cell = function (st) {
+      if (!st) return null;
+      const thin = st.n < g.min_asks;
+      return { n: st.n, thin: thin, med: st.med, text: per(st.med), range: thin ? "" : per(st.p25) + " to " + per(st.p75) };
+    };
+    const rows = g.rows.map(function (r) {
+      const gv = r.govt;
+      return {
+        id: r.id, name: r.name, level: r.level, district: r.district,
+        label: r.level === "district" ? r.name + " district (all of it)" : r.name + (r.kind ? " (" + String(r.kind).replace(/_/g, " ") + ")" : "") + (r.district ? ", " + r.district : ""),
+        recent: cell(r.stats.recent[o.size]), any: cell(r.stats.any[o.size]),
+        govt: gv ? { text: per(gv.lo) + (gv.hi > gv.lo ? " to " + per(gv.hi) : ""), fy: gv.fy, n: gv.n, source: gv.source, url: gv.url } : null
+      };
+    }).filter(function (r) { return r.recent || r.any || r.govt; })
+      .filter(function (r) { return !q || (r.label + " " + (r.district || "")).toLowerCase().includes(q); });
+    const key = { n: function (a, b) { return ((b.recent && b.recent.n) || 0) - ((a.recent && a.recent.n) || 0) || ((b.any && b.any.n) || 0) - ((a.any && a.any.n) || 0); },
+      high: function (a, b) { return nullsLast(a.recent && a.recent.med, b.recent && b.recent.med, -1); },
+      low: function (a, b) { return nullsLast(a.recent && a.recent.med, b.recent && b.recent.med, 1); },
+      name: function (a, b) { return a.label.localeCompare(b.label); } }[o.sort] || null;
+    return key ? rows.sort(key) : rows;
   }
 
   /** A price against its comparables, in plain words for a card. c: {p: percentile (low = cheap), n, rel}. */
@@ -292,5 +327,5 @@
       return '<li><span class="who">' + esc(WHO[a.o] || a.o) + "</span> " + esc(a.a) + ' <span class="' + (cls || "why") + '">Because: ' + esc(a.w) + "</span></li>";
     }).join("");
   }
-  return { askHTML, histogram, unitTable, perUnit, toPps, fmtMoney, areaNotation, areaPlain, relTime, whenText, compsPlain, glance, freshness, daysSince, isNewAd, postedSince, isCut, compsLabel, filter, sort, toHash, parseHash, toCSV, toGeoJSON, toKML, esc, safeUrl };
+  return { askHTML, histogram, unitTable, perUnit, toPps, fmtMoney, areaNotation, areaPlain, niceTitle, relTime, whenText, compsPlain, glance, freshness, guideRows, daysSince, isNewAd, postedSince, isCut, compsLabel, filter, sort, toHash, parseHash, toCSV, toGeoJSON, toKML, esc, safeUrl };
 });

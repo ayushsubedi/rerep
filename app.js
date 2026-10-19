@@ -35,11 +35,11 @@
 
   // ---------- helpers ----------
   const UNIT_LABEL = { aana: "aana", ropani: "ropani", kattha: "kattha", dhur: "dhur", bigha: "bigha", sqft: "sq ft", sqm: "m²" };
-  const pctColor = (c) => (!c ? "#7a7391" : c.p < 25 ? "#00ffff" : c.p > 75 ? "#ff00ff" : "#b48cff");
+  const pctColor = (c) => (!c ? "#98a1b0" : c.p < 25 ? "#2a7548" : c.p > 75 ? "#bd3519" : "#6c7f99");
   function priceText(l) { return l.p != null ? L.fmtMoney(L.perUnit(l.p, S.f.unit, T)) : l.tot ? L.fmtMoney(l.tot) + " total" : "Price n/a"; }   // area unreadable: the total is the price
   const perText = (l) => (l.p != null ? " <small>/" + UNIT_LABEL[S.f.unit] + "</small>" : "");
   function areaText(l) {
-    if (l.a == null) return "area n/a";
+    if (l.a == null) return "Area not stated";
     const sqm = Math.round(l.a).toLocaleString("en-US") + " m²";
     return l.sys ? (L.areaPlain(l.a, l.sys, D.meta.units) || L.areaNotation(l.a, l.sys, D.meta.units)) + " (" + sqm + ")" : sqm + " · " + (l.a / T.aana).toFixed(1) + " aana";
   }
@@ -92,15 +92,15 @@
     if (age != null && age > 180) tags.push('<span class="tag weak" title="The portal dates this ad long ago and still lists it; confirm it is still for sale"><i>old ad: check it is still for sale</i></span>');
     const place = placeText(l);
     const starred = !!S.watch[l.id];
+    const actions_html = '<span class="card-actions"><button class="cmp" type="button" data-cmp="' + l.id + '" aria-pressed="' + (S.cmp.indexOf(l.id) >= 0) + '" aria-label="' + (S.cmp.indexOf(l.id) >= 0 ? "Remove from comparison" : "Add to comparison (up to 3)") + '">' + (S.cmp.indexOf(l.id) >= 0 ? "✓ Compare" : "＋ Compare") + "</button> " +
+      '<button class="star" type="button" data-star="' + l.id + '" aria-pressed="' + starred + '" aria-label="' + (starred ? "Remove from saved plots" : "Save this plot") + '">' + (starred ? "★ Saved" : "☆ Save") + "</button></span>";
     return '<li class="card' + (S.sel === l.id ? " sel" : "") + '" data-id="' + l.id + '">' +
       '<div class="price">' + L.esc(priceText(l)) + perText(l) + "</div>" +
-      '<span class="card-actions"><button class="cmp" type="button" data-cmp="' + l.id + '" aria-pressed="' + (S.cmp.indexOf(l.id) >= 0) + '" aria-label="' + (S.cmp.indexOf(l.id) >= 0 ? "Remove from comparison" : "Add to comparison (up to 3)") + '">' + (S.cmp.indexOf(l.id) >= 0 ? "✓ Compare" : "＋ Compare") + "</button> " +
-      '<button class="star" type="button" data-star="' + l.id + '" aria-pressed="' + starred + '" aria-label="' + (starred ? "Remove from saved plots" : "Save this plot") + '">' + (starred ? "★ Saved" : "☆ Save") + "</button></span>" +
-      '<h3><button type="button" data-open="' + l.id + '">' + L.esc(l.t) + "</button></h3>" +
+      '<h3><button type="button" data-open="' + l.id + '">' + L.esc(L.niceTitle(l.t)) + "</button></h3>" +
       '<div class="facts"><span>' + L.esc(areaText(l)) + "</span>" + (l.tot && l.p != null ? "<span>" + L.esc(L.fmtMoney(l.tot)) + " total</span>" : "") +
       (l.road ? "<span>" + l.road + " ft road</span>" : "") + '<span class="dim">' + L.esc(place) + "</span>" +
       '<span class="dim">' + L.esc(l.src) + " · " + L.whenText(l) + "</span></div>" +
-      (tags.length ? '<div class="tags">' + tags.join("") + "</div>" : "") + "</li>";
+      '<div class="card-foot">' + (tags.length ? '<div class="tags">' + tags.join("") + "</div>" : "") + actions_html + "</div></li>";
   }
   // ---------- price histogram: the distribution under every filter EXCEPT price, so you can see where a budget sits ----------
   function renderHist() {
@@ -125,6 +125,7 @@
   function renderList() {
     compute(); renderHist();
     const nf = countFilters(); $("filterCount").textContent = nf ? "(" + nf + ")" : "";
+    const nm = [S.f.src, S.f.cut, S.f.dups].filter(Boolean).length; $("moreCount").textContent = nm ? "(" + nm + ")" : "";
     $("resultsHead").textContent = visible.length + (visible.length === 1 ? " listing" : " listings") +
       (FR ? " · " + FR.counts[3] + " match my finder" : "");
     const shown = visible.slice(0, S.shown);
@@ -145,14 +146,14 @@
     layerL = window.L.layerGroup().addTo(map); layerS = window.L.layerGroup().addTo(map); layerC = window.L.layerGroup();
     const have = {}; D.meta.districts.forEach((d) => { have[d.district_id] = d.n; });
     layerB = window.L.geoJSON(D.boundaries, {
-      style: (f) => (have[f.properties.id] ? { color: "#7656b8", weight: 1, fillColor: "#00ffff", fillOpacity: 0.09 } : { color: "#4a3578", weight: 1, fillOpacity: 0, dashArray: "3 4" }),
+      style: (f) => (have[f.properties.id] ? { color: "#1d3f66", weight: 1, fillColor: "#1d3f66", fillOpacity: 0.07 } : { color: "#aab2c0", weight: 1, fillOpacity: 0, dashArray: "3 4" }),
       onEachFeature: (f, layer) => layer.bindTooltip(L.esc(f.properties.name) + ": " + (have[f.properties.id] ? have[f.properties.id] + " listings" : "no data (not crawled, or none found)"), { sticky: true })
     });
     D.catalysts.forEach((c) => {
       const tip = "<b>" + L.esc(c.name) + "</b><br>" + L.esc(c.kind) + " · stage: " + L.esc(c.stage) +
         '<br><span class="judge">stage and “priced in ' + Math.round((c.priced_in || 0) * 100) + '%” are judgement calls, not measurements</span>';
-      if (c.path) window.L.polyline(c.path, { color: "#ff9900", weight: 3, dashArray: "6 6" }).bindPopup(tip).addTo(layerC);
-      window.L.circle([c.lat, c.lon], { radius: (c.radius_km || 0) * 1000, color: "#ff9900", weight: 1, fillOpacity: 0.06 }).bindPopup(tip).addTo(layerC);
+      if (c.path) window.L.polyline(c.path, { color: "#9c7640", weight: 3, dashArray: "6 6" }).bindPopup(tip).addTo(layerC);
+      window.L.circle([c.lat, c.lon], { radius: (c.radius_km || 0) * 1000, color: "#9c7640", weight: 1, fillOpacity: 0.06 }).bindPopup(tip).addTo(layerC);
     });
     layerA = window.L.layerGroup().addTo(map); window.JAGGA_ANCHORS = layerA;       // exposed for the browser test, like JAGGA_MAP
     window.JAGGA_MAP = map; map.on("zoomend", drawMarkers); map.on("click", onMapClick);
@@ -173,7 +174,7 @@
     cells.forEach((g) => {
       if (g.length === 1) {
         const l = g[0];
-        const m = window.L.circleMarker([l.lat, l.lon], { renderer: canvas, radius: 6, color: "#000", weight: 1, fillColor: pctColor(l.c), fillOpacity: 0.92 });
+        const m = window.L.circleMarker([l.lat, l.lon], { renderer: canvas, radius: 6, color: "#ffffff", weight: 1.5, fillColor: pctColor(l.c), fillOpacity: 0.92 });
         m.on("click", () => openDrawer(l.id, true));
         m.on("mouseover", () => hot(l.id, true)); m.on("mouseout", () => hot(l.id, false));
         m.bindTooltip(L.esc(priceText(l)) + "/" + UNIT_LABEL[S.f.unit] + (l.prec && l.prec !== "exact" ? " (approx. location)" : ""), { direction: "top" });
@@ -210,8 +211,8 @@
     layerS.clearLayers();
     const l = S.sel && byId.get(S.sel);
     if (!l || l.lat == null) return;
-    window.L.circleMarker([l.lat, l.lon], { radius: 15, color: "#ff00ff", weight: 3, fillColor: "#ff00ff", fillOpacity: 0.12, interactive: false }).addTo(layerS);
-    window.L.circleMarker([l.lat, l.lon], { radius: 7, color: "#fff", weight: 2, fillColor: pctColor(l.c), fillOpacity: 1, interactive: false }).addTo(layerS);
+    window.L.circleMarker([l.lat, l.lon], { radius: 15, color: "#1d3f66", weight: 3, fillColor: "#1d3f66", fillOpacity: 0.12, interactive: false }).addTo(layerS);
+    window.L.circleMarker([l.lat, l.lon], { radius: 7, color: "#ffffff", weight: 2, fillColor: pctColor(l.c), fillOpacity: 1, interactive: false }).addTo(layerS);
   }
   function showOnMap(l) {
     if (!map || l.lat == null) return;
@@ -222,7 +223,7 @@
   }
   function hot(id, on) {
     const m = markers.get(id), card = document.querySelector('.card[data-id="' + id + '"]');
-    if (m) m.setStyle({ radius: on || S.sel === id ? 10 : 6, weight: on || S.sel === id ? 3 : 1, color: on || S.sel === id ? "#fff" : "#000" });
+    if (m) m.setStyle({ radius: on || S.sel === id ? 10 : 6, weight: on || S.sel === id ? 3 : 1, color: on || S.sel === id ? "#131d2b" : "#ffffff" });
     if (card) card.classList.toggle("hot", on);
   }
 
@@ -233,21 +234,21 @@
     if (!it || !it.results.length) return "";
     const mark = { pass: "✓", fail: "✗", unknown: "?" };
     const rows = it.results.map((x) => '<li class="ic ' + x.s + '"><b>' + mark[x.s] + " " + L.esc(x.label) + (x.must ? "" : " <small>(nice to have)</small>") + "</b><br>" + L.esc(x.e) + "</li>").join("");
-    return '<h3 class="sec">◎ My finder · ' + (F.TIER[it.tier] || "outside it") + '</h3><ul class="factors ideal-list">' + rows + "</ul>" +
+    return '<h3 class="sec">My finder · ' + (F.TIER[it.tier] || "outside it") + '</h3><ul class="factors ideal-list">' + rows + "</ul>" +
       '<p class="foot">Pass, fail or unknown: unknown means the ad does not say, not that it is bad. A view, water, soil and tourism demand cannot be measured from this data.</p>';
   }
   function spark(h, unit) {
     if (!h || h.length < 2) return "";
     const vs = h.map((x) => x[1]), lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs), W = 300, H = 50;
     const pts = h.map((x, i) => (i / (h.length - 1) * W).toFixed(1) + "," + (H - 4 - (hi === lo ? 0.5 : (x[1] - lo) / (hi - lo)) * (H - 8)).toFixed(1)).join(" ");
-    return '<svg class="spark" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Price history, ' + h.length + ' observations"><polyline fill="none" stroke="#ff9900" stroke-width="2" points="' + pts + '"/></svg>';
+    return '<svg class="spark" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Price history, ' + h.length + ' observations"><polyline fill="none" stroke="#bd3519" stroke-width="2" points="' + pts + '"/></svg>';
   }
   function openDrawer(id, fromMap) {
     const l = byId.get(id); if (!l) return;
     if (!$("finder").hidden) hideFinder();                 // the finder and the X-Ray share the left side: opening a plot puts the finder away (its criteria stay)
     if ($("drawer").hidden) S.lastFocus = document.activeElement;
     S.sel = id; updateStepper(id);
-    $("dBody").innerHTML = '<h2 id="dTitle">' + L.esc(l.t) + '</h2><p class="foot" role="status">Loading details…</p>';
+    $("dBody").innerHTML = '<h2 id="dTitle">' + L.esc(L.niceTitle(l.t)) + '</h2><p class="foot" role="status">Loading details…</p>';
     $("drawer").hidden = false; document.body.classList.add("sel-open"); settleMap(); $("dClose").focus();
     loadDetail([id]).then(() => { if (S.sel === id) renderDrawer(id, fromMap); },
       () => { if (S.sel === id) $("dBody").insertAdjacentHTML("beforeend", '<p class="empty">Could not load the details. Check your connection and try again.</p>'); });
@@ -263,7 +264,7 @@
     const per = ["aana", "ropani", "sqft", "sqm"].map((u) => "<dt>per " + UNIT_LABEL[u] + "</dt><dd>" + L.esc(L.fmtMoney(L.perUnit(l.p, u, T))) + "</dd>").join("");
     const approx = l.prec === "palika" ? " (palika centre only)" : l.prec === "locality" ? " (approximate)" : "";
     $("dBody").innerHTML =
-      '<h2 id="dTitle">' + L.esc(l.t) + "</h2>" +
+      '<h2 id="dTitle">' + L.esc(L.niceTitle(l.t)) + "</h2>" +
       '<div class="price">' + L.esc(priceText(l)) + perText(l) + "</div>" +
       '<h3 class="sec">At a glance</h3><ul class="glance">' + L.glance(l, { today: new Date(), unit: S.f.unit, T: T, flags: D.meta.flags }).map((x) => "<li>" + L.esc(x) + "</li>").join("") + "</ul>" +
       '<h3 class="sec">The numbers</h3><dl class="kv"><dt>total</dt><dd>' + L.esc(l.tot ? L.fmtMoney(l.tot) : "n/a") + "</dd><dt>area</dt><dd>" + L.esc(areaText(l)) + "</dd>" +
@@ -277,7 +278,7 @@
       '<button class="btn btn-outline" type="button" data-star="' + l.id + '" aria-pressed="' + !!S.watch[l.id] + '"><span>' + (S.watch[l.id] ? "★ Saved" : "☆ Save") + "</span></button> " +
       (l.lat != null ? '<button class="btn btn-ghost only-narrow" type="button" data-showmap="' + l.id + '"><span>Show on map</span></button> ' : "") +
       '<button class="btn btn-ghost" type="button" data-copy="1"><span>Copy link</span></button></p>' +
-      '<h3 class="sec">Your notes (stored only in this browser)</h3><label class="sr" for="note">Notes</label><textarea id="note" class="notes" placeholder="> road 13ft, owner flexible…"></textarea>';
+      '<h3 class="sec">Your notes (stored only in this browser)</h3><label class="sr" for="note">Notes</label><textarea id="note" class="notes" placeholder="e.g. road 13 ft, owner flexible, ask about the boundary…"></textarea>';
     const note = $("note"); note.value = store.get("jagga.note." + id, ""); note.addEventListener("input", () => store.set("jagga.note." + id, note.value));
     pinSelected(); showOnMap(l);
     pushHash();
@@ -314,7 +315,7 @@
   }
 
   // ---------- modals ----------
-  function openModal(title, html) { $("mTitle").textContent = "> " + title; $("mBody").innerHTML = html; $("modal").showModal(); }
+  function openModal(title, html) { $("mTitle").textContent = title.charAt(0).toUpperCase() + title.slice(1); $("mBody").innerHTML = html; $("modal").showModal(); }
   function coverageHTML() {
     const m = D.meta, n = m.nation, max = Math.max.apply(null, m.districts.map((d) => d.n).concat([1]));
     const have = new Set(m.districts.map((d) => d.district_id));
@@ -452,8 +453,8 @@
     layerA.clearLayers();
     const r = S.profile.rows.near;
     if (!FR || !r || !r.on) return;
-    r.places.forEach((p) => window.L.circle([p.lat, p.lon], { radius: p.km * 1000, color: "#ff00ff", weight: 1, dashArray: "5 5", fillOpacity: 0.05, interactive: false }).addTo(layerA)
-      && window.L.circleMarker([p.lat, p.lon], { radius: 4, color: "#ff00ff", fillColor: "#ff00ff", fillOpacity: 1, interactive: false }).bindTooltip(L.esc(p.n) + ": " + p.km + " km", { permanent: false }).addTo(layerA));
+    r.places.forEach((p) => window.L.circle([p.lat, p.lon], { radius: p.km * 1000, color: "#bd3519", weight: 1.5, dashArray: "5 5", fillOpacity: 0.06, interactive: false }).addTo(layerA)
+      && window.L.circleMarker([p.lat, p.lon], { radius: 5, color: "#ffffff", weight: 2, fillColor: "#bd3519", fillOpacity: 1, interactive: false }).bindTooltip(L.esc(p.n) + ": " + p.km + " km", { permanent: false }).addTo(layerA));
   }
   function loadPlaces() {
     if (PLACES) return Promise.resolve(PLACES);
@@ -594,6 +595,67 @@
     const starred = Object.keys(S.watch).filter((i) => byId.has(i));
     if (navigator.onLine && starred.length) loadDetail(starred).catch(() => {});
   }
+  // ---------- price guide: what sellers ask per place, with the reported government rate beside it ----------
+  const GS = { size: "all", sort: "n", q: "" };
+  let guideP = null;
+  function loadGuide() {
+    if (window.JAGGA_GUIDE) return Promise.resolve(window.JAGGA_GUIDE);
+    if (!guideP) guideP = new Promise((res, rej) => {
+      const sc = document.createElement("script"); sc.src = "guide.js";
+      sc.onload = () => res(window.JAGGA_GUIDE); sc.onerror = () => { guideP = null; rej(new Error("price guide unavailable")); };
+      document.head.appendChild(sc);
+    });
+    return guideP;
+  }
+  function guideTable() {
+    const rows = L.guideRows(window.JAGGA_GUIDE, { size: GS.size, sort: GS.sort, q: GS.q, unit: S.f.unit, T: T });
+    if (!rows.length) return '<p class="empty">No place matches.</p>';
+    const ask = (c) => !c ? '<span class="dim">none</span>' : c.thin ? '<span class="dim">about ' + L.esc(c.text) + " · " + c.n + (c.n === 1 ? " ad: too few" : " ads: too few") + "</span>"
+      : "<b>" + L.esc(c.text) + "</b><br><small>" + L.esc(c.range) + " · " + c.n + " ads</small>";
+    return '<div class="tbl-wrap"><table class="guide"><thead><tr><th>Place</th><th>Asked in the last year, per ' + UNIT_LABEL[S.f.unit] + "</th><th>Every ad still listed</th><th>Government rate, as reported</th><th></th></tr></thead><tbody>" +
+      rows.map((r) => '<tr><td data-label="Place">' + L.esc(r.label) + '</td><td data-label="Asked in the last year">' + ask(r.recent) + '</td><td data-label="Every ad still listed">' + ask(r.any) + "</td>" +
+        '<td data-label="Government rate">' + (r.govt ? "<b>" + L.esc(r.govt.text) + "</b><br><small>FY " + L.esc(r.govt.fy) + ", " + r.govt.n + " road segment" + (r.govt.n === 1 ? "" : "s") + ' · <a class="src" href="' + L.esc(L.safeUrl(r.govt.url)) + '" target="_blank" rel="noopener noreferrer">' + L.esc(r.govt.source) + " ↗</a></small>" : '<span class="dim">not loaded</span>') + "</td>" +
+        '<td><button class="btn btn-ghost" type="button" data-gshow="' + L.esc(r.id) + '"><span>Show ads</span></button></td></tr>').join("") + "</tbody></table></div>";
+  }
+  /** The phone's menu: what the wide screen keeps in the top bar. Each button hands over to the real one. */
+  function openMenu() {
+    const lang = $("btnLang"), item = (id, label) => '<button class="btn btn-outline" type="button" data-menu="' + id + '"><span>' + label + "</span></button>";
+    openModal("menu", '<div class="menu-list">' + item("btnWatch", "Saved plots (" + Object.keys(S.watch).length + ")") + item("btnCompare", "Compare (" + S.cmp.length + ")") + item("btnGuide", "Price guide") +
+      item("btnCoverage", "Where we have data") + item("btnAbout", "About and how to read it") +
+      (lang && !lang.hidden ? '<a class="btn btn-outline" href="' + L.esc(L.safeUrl(lang.getAttribute("href"))) + '"><span>' + L.esc(lang.textContent.trim()) + "</span></a>" : "") +
+      '</div><h3 class="sec">Download the list you are looking at</h3><div class="exports"><button class="btn btn-ghost" type="button" data-export="csv"><span>CSV</span></button>' +
+      '<button class="btn btn-ghost" type="button" data-export="geojson"><span>GeoJSON</span></button><button class="btn btn-ghost" type="button" data-export="kml"><span>KML</span></button></div>');
+  }
+  function guideHTML() {
+    const g = window.JAGGA_GUIDE, opt = (v, label, cur) => '<option value="' + v + '"' + (v === cur ? " selected" : "") + ">" + label + "</option>";
+    return "<p>What sellers <b>ask</b>, place by place, from the " + g.n_asks + " priced ads we hold (" + g.n_recent + " dated within the last year). Asking prices are not what plots sold for: sale prices are not public in Nepal.</p>" +
+      '<div class="gctl"><label class="chip"><span class="lbl">Plots</span><select data-g="size" aria-label="Plot size">' + opt("all", "all sizes", GS.size) + opt("small", "up to " + g.small_max_aana + " aana (house plots)", GS.size) + "</select></label>" +
+      '<label class="chip"><span class="lbl">Price per</span><select data-g="unit" aria-label="Price unit">' + ["aana", "ropani", "kattha", "dhur", "bigha", "sqft", "sqm"].map((u) => opt(u, UNIT_LABEL[u], S.f.unit)).join("") + "</select></label>" +
+      '<label class="chip"><span class="lbl">Sort</span><select data-g="sort" aria-label="Sort places">' + opt("n", "most ads first", GS.sort) + opt("high", "dearest first", GS.sort) + opt("low", "cheapest first", GS.sort) + opt("name", "name", GS.sort) + "</select></label>" +
+      '<label class="chip"><span class="sr">Find a place</span><input data-g="q" placeholder="Find a place…" value="' + L.esc(GS.q) + '"></label></div>' +
+      '<div id="gTable">' + guideTable() + "</div>" +
+      '<p class="foot">A range is shown only from ' + g.min_asks + " asks; with fewer, only the count and a grey figure. Hill land comes in far bigger plots than city land, so per-aana figures differ for that reason too: use “up to 10 aana” to compare house plots. " +
+      "Ads dated over a year ago are left out of the first column because asking prices drift. The government rates are only the road segments named in one news report (Kathmandu valley, the latest fiscal year loaded); which segment applies to a plot depends on its road, and everywhere else the rate is <b>not loaded</b>: ask the land revenue office.</p>";
+  }
+  function openGuide() {
+    loadGuide().then(() => openModal("price guide", guideHTML()), () => openModal("price guide", '<p class="empty">The price guide could not be loaded. Check your connection and try again.</p>'));
+  }
+  function guideEvents() {
+    const root = $("mBody");
+    const upd = (e) => {
+      const t = e.target; if (!t.dataset || !t.dataset.g) return;
+      if (t.dataset.g === "unit") { S.f.unit = t.value; $("fUnit").value = t.value; refresh(); } else GS[t.dataset.g] = t.value;
+      $("gTable").innerHTML = guideTable();
+    };
+    root.addEventListener("input", (e) => { if (e.target.dataset && e.target.dataset.g === "q") upd(e); });
+    root.addEventListener("change", (e) => { if (e.target.dataset && e.target.dataset.g && e.target.dataset.g !== "q") upd(e); });
+    root.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-gshow]"); if (!b) return;
+      const r = window.JAGGA_GUIDE.rows.find((x) => x.id === b.dataset.gshow); if (!r) return;
+      S.f.dis = r.district_id || ""; S.f.q = r.level === "district" ? "" : r.name; writeUI(); $("modal").close(); refresh();
+    });
+  }
+
   /** One honest line about how old the data is, computed when the page is opened: it keeps growing if the nightly crawl stops. */
   function renderFresh() {
     const f = L.freshness(D.meta.refresh, new Date()), el = $("freshLine");
@@ -648,6 +710,11 @@
       const round = (x) => String(+(x >= 1000 ? Math.round(x / 100) * 100 : x.toPrecision(2)));
       S.f.pmin = round(+r.dataset.lo); S.f.pmax = round(+r.dataset.hi); writeUI(); refresh();
     });
+    $("btnGuide").addEventListener("click", openGuide); guideEvents();
+    if (window.matchMedia("(max-width: 900px)").matches) $("moreFilters").open = true;                  // on a phone the filters panel shows everything
+    document.addEventListener("click", (e) => { const m = $("moreFilters"); if (m.open && !m.contains(e.target) && !window.matchMedia("(max-width: 900px)").matches) m.open = false; });
+    $("btnMenu").addEventListener("click", openMenu);
+    $("mBody").addEventListener("click", (e) => { const b = e.target.closest("[data-menu]"); if (b) { $("modal").close(); $(b.dataset.menu).click(); } });
     $("btnFilters").addEventListener("click", () => {
       const open = document.body.classList.toggle("filters-open"); $("btnFilters").setAttribute("aria-expanded", open); syncTopHeight();
     });
