@@ -100,7 +100,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .card { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; cursor: pointer;
   transition: box-shadow var(--ease), border-color var(--ease); }
-.card:hover, .card.hot { box-shadow: var(--shadow); border-color: var(--line-strong); }
+.card:hover { box-shadow: var(--shadow); border-color: var(--line-strong); }
+.card.hot { box-shadow: 0 0 0 1px var(--brand), var(--shadow); border-color: var(--brand); }
 .card.sel { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand); }
 .price { font: 700 28px var(--font-display); letter-spacing: -.025em; color: var(--ink); line-height: 1.1; }
 .price small { font: 500 14px var(--font-ui); color: var(--ink-3); letter-spacing: 0; margin-left: 2px; }
@@ -169,7 +170,7 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; } th, td { text
 .hist line { stroke: var(--terra); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .hist figcaption { margin: 4px 0 0; border: 0; padding: 0; }
 .cl { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font: 700 13px var(--font-ui); color: var(--ink); background: var(--surface); border: 2px solid var(--brand); box-shadow: var(--shadow); cursor: pointer; transition: transform var(--ease); }
-.cl:hover { transform: scale(1.1); } .leaflet-popup-content .btn { display: flex; min-height: 40px; padding: 2px 10px; }
+.cl:hover, .cl.hl { transform: scale(1.14); } .cl.hl { background: var(--brand); color: var(--brand-ink); } .leaflet-popup-content .btn { display: flex; min-height: 40px; padding: 2px 10px; }
 
 /* ---- the finder and the checklist ---- */
 .tag.ideal.t4 { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); } .tag.ideal.t3 { background: var(--brand-soft); border-color: transparent; color: var(--brand); }
@@ -254,9 +255,6 @@ body.picking #map { cursor: crosshair; }
 .more-pop .chip, .more-pop .btn { justify-content: flex-start; }
 .menu-list { display: grid; gap: 10px; } .menu-list .btn { justify-content: flex-start; min-height: 52px; font-size: 16px; }
 .exports { display: flex; flex-wrap: wrap; gap: 8px; }
-.card { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
-.card h3, .facts { grid-column: 1 / -1; } .card .tags { grid-column: 1; align-self: center; } .card .card-actions { grid-column: 2; order: 11; margin: 0; align-self: end; }
-.card .tags:empty { display: none; }
 @media (max-width: 900px) {
   .top-row { flex-wrap: wrap; row-gap: 8px; }
   .brand { order: 1; } .brand-sub { display: none; }
@@ -265,13 +263,12 @@ body.picking #map { cursor: crosshair; }
   .top-actions #btnMenu { padding: 0 12px; font-size: 18px; letter-spacing: 1px; }
   #btnFilters { order: 3; } .search { order: 4; flex: 1 1 100%; }
   .list-tools { flex-wrap: nowrap; width: 100%; } .list-tools .chip { flex: 1 1 auto; } .list-tools .export { display: none; } .hist { display: none; }
-  .card .tags { grid-column: 1 / -1; } .card .card-actions { grid-column: 1 / -1; justify-content: flex-start; margin-top: 4px; }
   .more-pop { position: static; box-shadow: none; border: 0; padding: 0; min-width: 0; } .more-filters { flex: 1 1 100% !important; } .more-filters > summary { display: none; }
 }
 #fRoad { width: 56px; } .chip.range input { width: 66px; } .filters { padding-left: 16px; padding-right: 16px; }
+.card .tags:empty { display: none; }
 .card-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-top: 6px; }
 .card-foot .tags { margin: 0; } .card-foot .card-actions { margin: 0 0 0 auto; order: 0; display: flex; gap: 8px; }
-.card .tags, .card .card-actions, .card h3, .facts, .price { grid-column: auto; }
 .cmp, .star { min-height: 40px; padding: 0 12px; font-size: 13px; }
 .tag { white-space: nowrap; }
 @media (max-width: 900px) { .card-foot .card-actions { margin-left: 0; } .cmp, .star { min-height: 44px; } }

@@ -15,7 +15,7 @@
   const S = { f: { unit: "aana", aunit: "aana", sort: "new" }, cmp: [], shown: PAGE, sel: null, watch: store.get("jagga.watch", {}), bounds: null, fitNext: true, lastFocus: null };
   const byId = new Map(D.listings.map((l) => [l.id, l]));
   let FR = null, FRMAP = new Map(), PLACES = null, placesP = null, SINCE = null;       // the finder's last run, by listing id; the places picker's data (loaded on demand)
-  let visible = [], map = null, layerA = null, layerS = null, layerL = null, layerC = null, layerB = null, markers = new Map(), canvas = null;
+  let visible = [], map = null, layerA = null, layerS = null, layerL = null, layerH = null, layerC = null, layerB = null, markers = new Map(), clusterOf = new Map(), canvas = null, hovId = null, hovTimer = 0;
 
   // ---------- detail shards: X-Ray text and price history load on demand (d/<first id char>.js) ----------
   const DETAIL = {}, shardP = {};
@@ -143,7 +143,7 @@
     map = window.L.map("map", { preferCanvas: true, zoomControl: true, attributionControl: true }).setView([28.2, 84.2], 7);
     window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap contributors" }).addTo(map);
     canvas = window.L.canvas({ padding: 0.5 });
-    layerL = window.L.layerGroup().addTo(map); layerS = window.L.layerGroup().addTo(map); layerC = window.L.layerGroup();
+    layerL = window.L.layerGroup().addTo(map); layerS = window.L.layerGroup().addTo(map); layerH = window.L.layerGroup().addTo(map); layerC = window.L.layerGroup();
     const have = {}; D.meta.districts.forEach((d) => { have[d.district_id] = d.n; });
     layerB = window.L.geoJSON(D.boundaries, {
       style: (f) => (have[f.properties.id] ? { color: "#1d3f66", weight: 1, fillColor: "#1d3f66", fillOpacity: 0.07 } : { color: "#aab2c0", weight: 1, fillOpacity: 0, dashArray: "3 4" }),
@@ -156,14 +156,14 @@
       window.L.circle([c.lat, c.lon], { radius: (c.radius_km || 0) * 1000, color: "#9c7640", weight: 1, fillOpacity: 0.06 }).bindPopup(tip).addTo(layerC);
     });
     layerA = window.L.layerGroup().addTo(map); window.JAGGA_ANCHORS = layerA;       // exposed for the browser test, like JAGGA_MAP
-    window.JAGGA_MAP = map; map.on("zoomend", drawMarkers); map.on("click", onMapClick);
+    window.JAGGA_MAP = map; window.JAGGA_HOVER = layerH; window.JAGGA_MARKERS = () => markers; map.on("zoomend", drawMarkers); map.on("click", onMapClick);
     map.on("moveend", () => { const b = map.getBounds(); S.bounds = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()]; if ($("fMapOnly").checked && !S.fitNext) { S.shown = PAGE; renderList(); } S.fitNext = false; });
   }
   // ---------- map: distance clustering, recomputed on zoom (no library) ----------
   const CELL = 56;                                   // px: listings closer than this on screen merge into one numbered circle
   function drawMarkers() {
     if (!map) return;
-    layerL.clearLayers(); markers = new Map();
+    layerL.clearLayers(); markers = new Map(); clusterOf = new Map();
     const zoom = map.getZoom(), cells = new Map();
     visible.forEach((l) => {
       if (l.lat == null) return;
@@ -176,7 +176,7 @@
         const l = g[0];
         const m = window.L.circleMarker([l.lat, l.lon], { renderer: canvas, radius: 6, color: "#ffffff", weight: 1.5, fillColor: pctColor(l.c), fillOpacity: 0.92 });
         m.on("click", () => openDrawer(l.id, true));
-        m.on("mouseover", () => hot(l.id, true)); m.on("mouseout", () => hot(l.id, false));
+        m.on("mouseover", () => hover(l.id, true, "pin")); m.on("mouseout", () => hover(l.id, false, "pin"));
         m.bindTooltip(L.esc(priceText(l)) + "/" + UNIT_LABEL[S.f.unit] + (l.prec && l.prec !== "exact" ? " (approx. location)" : ""), { direction: "top" });
         m.addTo(layerL); markers.set(l.id, m);
         return;
@@ -193,9 +193,13 @@
           window.L.popup().setLatLng([lat, lon]).setContent('<div class="foot">' + g.length + " listings here</div>" + g.slice(0, 12).map((l) => '<button class="btn btn-ghost" type="button" data-open="' + l.id + '"><span>' + L.esc(priceText(l)) + " · " + L.esc(l.t.slice(0, 28)) + "</span></button>").join("")).openOn(map);
         } else map.fitBounds(b, { padding: [50, 50], maxZoom: 17 });
       });
+      g.forEach((x) => clusterOf.set(x.id, m));
+      m.on("mouseover", () => g.slice(0, 60).forEach((x) => { const c = cardEl(x.id); if (c) c.classList.add("hot"); }));       // a circle lights every card it holds
+      m.on("mouseout", () => document.querySelectorAll(".card.hot").forEach((c) => c.classList.remove("hot")));
       m.addTo(layerL);
     });
     pinSelected();
+    if (hovId) paintHover(hovId);
   }
   function renderMap() {
     if (!map) return;
@@ -219,12 +223,37 @@
     if (window.matchMedia("(max-width: 900px)").matches && !document.body.classList.contains("show-map")) return;   // map hidden on phones until its tab is open
     const z = Math.max(map.getZoom(), l.prec === "palika" ? 11 : 15);
     const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if ($("fMapOnly").checked) S.fitNext = true;           // this move comes from a card click: do not re-filter the list under the reader (moveend clears the flag)
     if (calm) map.setView([l.lat, l.lon], z); else map.flyTo([l.lat, l.lon], z, { duration: 0.6 });
   }
-  function hot(id, on) {
-    const m = markers.get(id), card = document.querySelector('.card[data-id="' + id + '"]');
-    if (m) m.setStyle({ radius: on || S.sel === id ? 10 : 6, weight: on || S.sel === id ? 3 : 1, color: on || S.sel === id ? "#131d2b" : "#ffffff" });
+  // ---------- two-way hover: a card lights its pin, a pin or a circle lights its card(s) ----------
+  const cardEl = (id) => document.querySelector('.card[data-id="' + id + '"]');
+  const cssVar = (n, d) => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || d;
+  /** The pin under the pointer (or keyboard focus) gets a ring on its own layer, so it shows even when clustering has merged it into a numbered circle (that circle is lit too). */
+  function paintHover(id) {
+    if (layerH) layerH.clearLayers();
+    document.querySelectorAll(".cl.hl").forEach((e) => e.classList.remove("hl"));
+    const l = id && byId.get(id);
+    if (!l) return;
+    const cm = clusterOf.get(id);
+    if (cm && cm._icon && cm._icon.firstElementChild) cm._icon.firstElementChild.classList.add("hl");
+    if (!layerH || l.lat == null) return;
+    const c = cssVar("--brand", "#1d3f66");
+    window.L.circleMarker([l.lat, l.lon], { radius: 17, color: c, weight: 3, fillColor: c, fillOpacity: 0.16, interactive: false }).addTo(layerH);
+    window.L.circleMarker([l.lat, l.lon], { radius: 7, color: "#ffffff", weight: 2, fillColor: pctColor(l.c), fillOpacity: 1, interactive: false }).addTo(layerH);
+  }
+  /** After a short dwell (so sweeping across pins does not make the list jump), bring a card that is off screen into view. */
+  function revealCard(card) {
+    const top = parseInt(cssVar("--top-h", "132"), 10) || 132, r = card.getBoundingClientRect();
+    if (r.top < top + 8 || r.bottom > window.innerHeight - 8) card.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }
+  function hover(id, on, from) {
+    const m = markers.get(id), card = cardEl(id), big = on || S.sel === id;
+    if (m) m.setStyle({ radius: big ? 10 : 6, weight: big ? 3 : 1, color: big ? "#131d2b" : "#ffffff" });
     if (card) card.classList.toggle("hot", on);
+    if (on) { hovId = id; paintHover(id); } else if (hovId === id) { hovId = null; paintHover(null); }
+    clearTimeout(hovTimer);
+    if (on && from === "pin" && card) hovTimer = setTimeout(() => revealCard(card), 160);
   }
 
   // ---------- drawer ----------
@@ -256,7 +285,11 @@
   function renderDrawer(id, fromMap) {
     const l = byId.get(id), dt = detailOf(id);
     document.querySelectorAll(".card.sel").forEach((c) => c.classList.remove("sel"));
-    const card = document.querySelector('.card[data-id="' + id + '"]');
+    let card = cardEl(id);
+    if (!card && fromMap) {                                  // a pin whose card is beyond the rendered page: load pages up to it
+      const j = visible.findIndex((x) => x.id === id);
+      if (j >= S.shown) { S.shown = Math.min(visible.length, j + 1 + PAGE); renderList(); card = cardEl(id); }
+    }
     if (card) { card.classList.add("sel"); if (fromMap) card.scrollIntoView({ block: "center" }); }
     const ok = dt.x.ok.map((f) => '<li><b>' + L.esc(f.f) + "</b><br>" + L.esc(f.d).replace(/JUDGEMENT CALLS?/g, '<span class="judge">judgement calls</span>') +
       (f.s ? '<br><a class="src" href="' + L.esc(L.safeUrl(f.s)) + '" target="_blank" rel="noopener noreferrer">source ↗</a>' : "") + "</li>").join("");
@@ -765,8 +798,11 @@
       else if (t.dataset.export) { doExport(t.dataset.export); t.closest("details").open = false; }
       else if (t.classList.contains("card")) openDrawer(t.dataset.id, false);
     });
-    document.addEventListener("mouseover", (e) => { const c = e.target.closest(".card"); if (c) hot(c.dataset.id, true); });
-    document.addEventListener("mouseout", (e) => { const c = e.target.closest(".card"); if (c) hot(c.dataset.id, false); });
+    const leaves = (c, e) => !(e.relatedTarget && c.contains(e.relatedTarget));          // moving between a card's own children is not leaving it
+    document.addEventListener("mouseover", (e) => { const c = e.target.closest(".card"); if (c && c.dataset.id !== hovId) hover(c.dataset.id, true, "card"); });
+    document.addEventListener("mouseout", (e) => { const c = e.target.closest(".card"); if (c && leaves(c, e)) hover(c.dataset.id, false, "card"); });
+    document.addEventListener("focusin", (e) => { const c = e.target.closest && e.target.closest(".card"); if (c) hover(c.dataset.id, true, "card"); });
+    document.addEventListener("focusout", (e) => { const c = e.target.closest && e.target.closest(".card"); if (c && leaves(c, e)) hover(c.dataset.id, false, "card"); });
     document.addEventListener("submit", (e) => {
       if (e.target.id !== "saveForm") return;
       e.preventDefault(); const name = $("saveName").value.trim(); if (!name) return;
