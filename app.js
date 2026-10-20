@@ -13,6 +13,7 @@
   };
 
   const S = { f: { unit: "aana", aunit: "aana", sort: "new" }, cmp: [], shown: PAGE, sel: null, watch: store.get("jagga.watch", {}), bounds: null, fitNext: true, lastFocus: null, picks: false, picksY: 0, sortTouched: false };
+  D.listings.forEach(L.multiSize);                                  // ads for a range of sizes: no single area or total (see lib.js)
   const byId = new Map(D.listings.map((l) => [l.id, l]));
   let FR = null, FRMAP = new Map(), PLACES = null, placesP = null, SINCE = null;       // the finder's last run, by listing id; the places picker's data (loaded on demand)
   let visible = [], map = null, layerA = null, layerS = null, layerL = null, layerH = null, layerC = null, layerB = null, markers = new Map(), clusterOf = new Map(), canvas = null, hovId = null, hovTimer = 0;
@@ -36,9 +37,10 @@
   // ---------- helpers ----------
   const UNIT_LABEL = { aana: "aana", ropani: "ropani", kattha: "kattha", dhur: "dhur", bigha: "bigha", sqft: "sq ft", sqm: "m²" };
   const pctColor = (c) => (!c ? "#98a1b0" : c.p < 25 ? "#2a7548" : c.p > 75 ? "#bd3519" : "#6c7f99");
-  function priceText(l) { return l.p != null ? L.fmtMoney(L.perUnit(l.p, S.f.unit, T)) : l.tot ? L.fmtMoney(l.tot) + " total" : "Price n/a"; }   // area unreadable: the total is the price
+  function priceText(l) { return l.p != null ? L.fmtMoney(L.perUnit(l.p, S.f.unit, T)) : l.tot ? L.fmtMoney(l.tot) + " total" : l.ms && l.msTot ? L.fmtMoney(l.msTot) + " (one of several sizes)" : "Price n/a"; }   // area unreadable: the total is the price
   const perText = (l) => (l.p != null ? " <small>/" + UNIT_LABEL[S.f.unit] + "</small>" : "");
   function areaText(l) {
+    if (l.ms) return l.ms === "plots of different sizes" ? "Plots of different sizes" : "Several sizes: " + l.ms;
     if (l.a == null) return "Area not stated";
     const sqm = Math.round(l.a).toLocaleString("en-US") + " m²";
     return l.sys ? (L.areaPlain(l.a, l.sys, D.meta.units) || L.areaNotation(l.a, l.sys, D.meta.units)) + " (" + sqm + ")" : sqm + " · " + (l.a / T.aana).toFixed(1) + " aana";
@@ -90,6 +92,8 @@
     if (l.tw) tags.push('<span class="tag weak" title="Same district, area, price and place as other postings, so probably the same plot. Photos and contacts are not used, so this cannot be proven: two plots in one subdivision can match too."><i>listed ' + (l.tw + 1) + '× (likely the same plot)</i></span>');
     const age = L.daysSince(l.po);
     if (age != null && age > 180) tags.push('<span class="tag weak" title="The portal dates this ad long ago and still lists it; confirm it is still for sale"><i>old ad: check it is still for sale</i></span>');
+    const unseen = L.daysSince(l.ls);
+    if (unseen != null && unseen > 14) tags.push('<span class="tag weak" title="We last saw this ad listed on the portal on ' + L.esc(l.ls) + '. Either the nightly check has not reached it, or the portal is not answering."><i>not re-checked since ' + L.esc(l.ls) + "</i></span>");
     const place = placeText(l);
     const starred = !!S.watch[l.id];
     const actions_html = '<span class="card-actions"><button class="cmp" type="button" data-cmp="' + l.id + '" aria-pressed="' + (S.cmp.indexOf(l.id) >= 0) + '" aria-label="' + (S.cmp.indexOf(l.id) >= 0 ? "Remove from comparison" : "Add to comparison (up to 3)") + '">' + (S.cmp.indexOf(l.id) >= 0 ? "✓ Compare" : "＋ Compare") + "</button> " +
@@ -206,19 +210,22 @@
     cells.forEach((g) => {
       if (g.length === 1) {
         const l = g[0];
-        const m = window.L.circleMarker([l.lat, l.lon], { renderer: canvas, radius: 6, color: "#ffffff", weight: 1.5, fillColor: pctColor(l.c), fillOpacity: 0.92 });
+        const area = l.prec === "palika";            // located only to its municipality's centre: a dashed ring, so it is never read as "the plot is here"
+        const m = window.L.circleMarker([l.lat, l.lon], area ? { renderer: canvas, radius: 9, color: pctColor(l.c), weight: 2.5, dashArray: "3 3", fillColor: pctColor(l.c), fillOpacity: 0.14 }
+          : { renderer: canvas, radius: 6, color: "#ffffff", weight: 1.5, fillColor: pctColor(l.c), fillOpacity: 0.92 });
         m.on("click", () => openDrawer(l.id, true));
         m.on("mouseover", () => hover(l.id, true, "pin")); m.on("mouseout", () => hover(l.id, false, "pin"));
-        m.bindTooltip(L.esc(priceText(l)) + "/" + UNIT_LABEL[S.f.unit] + (l.prec && l.prec !== "exact" ? " (approx. location)" : ""), { direction: "top" });
+        m.bindTooltip(L.esc(priceText(l)) + "/" + UNIT_LABEL[S.f.unit] + (l.prec === "palika" ? " (area only: the pin is the centre of the municipality)" : l.prec && l.prec !== "exact" ? " (approx. location)" : ""), { direction: "top" });
         m.addTo(layerL); markers.set(l.id, m);
         return;
       }
       const lat = g.reduce((a, l) => a + l.lat, 0) / g.length, lon = g.reduce((a, l) => a + l.lon, 0) / g.length;
       const ps = g.map((l) => l.p).filter((x) => x != null).sort((a, b) => a - b);
       const lo = ps[0], hi = ps[ps.length - 1];
-      const icon = window.L.divIcon({ className: "", iconSize: [36, 36], html: '<div class="cl" role="img" aria-label="' + g.length + ' listings">' + g.length + "</div>" });
+      const nArea = g.filter((l) => l.prec === "palika").length, mostlyArea = nArea * 2 >= g.length;          // a circle made of ads placed only to a municipality sits on that municipality's centre, not on any plot
+      const icon = window.L.divIcon({ className: "", iconSize: [36, 36], html: '<div class="cl' + (mostlyArea ? " area" : "") + '" role="img" aria-label="' + g.length + " listings" + (mostlyArea ? ", mostly placed only to the municipality" : "") + '">' + g.length + "</div>" });
       const m = window.L.marker([lat, lon], { icon: icon, keyboard: false });
-      m.bindTooltip(g.length + " listings" + (ps.length ? ": " + L.esc(L.fmtMoney(L.perUnit(lo, S.f.unit, T))) + " – " + L.esc(L.fmtMoney(L.perUnit(hi, S.f.unit, T))) + "/" + UNIT_LABEL[S.f.unit] : ""), { direction: "top" });
+      m.bindTooltip(g.length + " listings" + (mostlyArea ? " (" + nArea + " placed only to the municipality: this is its centre, not where they are)" : "") + (ps.length ? ": " + L.esc(L.fmtMoney(L.perUnit(lo, S.f.unit, T))) + " – " + L.esc(L.fmtMoney(L.perUnit(hi, S.f.unit, T))) + "/" + UNIT_LABEL[S.f.unit] : ""), { direction: "top" });
       m.on("click", () => {
         const b = window.L.latLngBounds(g.map((l) => [l.lat, l.lon]));
         if (b.getNorthEast().equals(b.getSouthWest()) || map.getZoom() >= 17) {          // same point (a locality centroid): list them instead of zooming forever
@@ -378,9 +385,9 @@
       '<h2 id="dTitle">' + L.esc(L.niceTitle(l.t)) + "</h2>" +
       '<div class="price">' + L.esc(priceText(l)) + perText(l) + "</div>" +
       '<h3 class="sec">At a glance</h3><ul class="glance">' + L.glance(l, { today: new Date(), unit: S.f.unit, T: T, flags: D.meta.flags }).map((x) => "<li>" + L.esc(x) + "</li>").join("") + "</ul>" +
-      '<h3 class="sec">The numbers</h3><dl class="kv"><dt>total</dt><dd>' + L.esc(l.tot ? L.fmtMoney(l.tot) : "n/a") + "</dd><dt>area</dt><dd>" + L.esc(areaText(l)) + "</dd>" +
+      '<h3 class="sec">The numbers</h3><dl class="kv"><dt>total</dt><dd>' + L.esc(l.tot ? L.fmtMoney(l.tot) : l.ms ? "depends on the plot" : "n/a") + "</dd><dt>area</dt><dd>" + L.esc(areaText(l)) + "</dd>" +
       (l.p != null ? per : "") + "<dt>place</dt><dd>" + L.esc(placeText(l)) + L.esc(approx) + "</dd>" +
-      (l.po ? "<dt>ad dated</dt><dd>" + L.esc(l.po) + "</dd>" : "") + (l.fac ? "<dt>facing</dt><dd>" + L.esc(l.fac) + "</dd>" : "") + "<dt>first found here</dt><dd>" + L.esc(l.fs || "?") + "</dd><dt>last seen listed</dt><dd>" + L.esc(l.ls || "?") + "</dd></dl>" +
+      (l.po ? "<dt>ad dated</dt><dd>" + L.esc(l.po) + "</dd>" : "") + (l.fac ? "<dt>facing</dt><dd>" + L.esc(l.fac) + "</dd>" : "") + "<dt>first found here</dt><dd>" + L.esc(l.fs || "?") + "</dd><dt>last seen listed</dt><dd>" + L.esc(l.ls || "?") + "</dd></dl>" + neverRemoves(l) +
       finderCheck(l) +
       '<h3 class="sec">The evidence, factor by factor <small class="foot">(each one cited; nothing is estimated)</small></h3><ul class="factors">' + ok + no + "</ul>" +
       (dt.ask && dt.ask.length ? '<details class="ask"><summary>Before you pay: ' + dt.ask.length + " things to ask or check</summary><ol class=\"factors\">" + L.askHTML(dt.ask) + "</ol></details>" : "") +
@@ -446,9 +453,31 @@
       "<h3 class=\"sec\">No data</h3><p>" + L.esc(m.all_districts.filter((d) => !have.has(d.id)).map((d) => d.name).join(", ")) + "</p>" +
       "<p class=\"foot\">No data means not crawled or nothing found there. It is <b>not</b> evidence that no land is for sale.</p>";
   }
+  /** How accurate the numbers are, as measured by an AI reader against the ads' own words (meta.accuracy); nothing at all when nothing was measured. */
+  function accuracyHTML(m) {
+    const v = L.accuracyView(m.accuracy);
+    if (!v) return "";
+    const rows = v.rows.map((r) => "<tr><td>" + L.esc(r.source) + "<small>" + r.n + " ads read</small></td>" + r.cells.map((c) => '<td class="n' + (c.miss ? " bad" : "") + '">' + c.text + "</td>").join("") + "</tr>").join("");
+    return '<h3 class="sec">How accurate is it?</h3>' +
+      "<p>To find out how often the numbers are wrong, ads were drawn at random from each portal and read from the ad’s own words, without looking at what this tool shows, by an AI assistant (not a land professional), and then compared. A value counts as right when it matches what the ad itself says. <b>" + L.esc(v.line) + ".</b> Each cell is <i>right / read</i>; a miss is marked in red.</p>" +
+      '<div class="tbl-wrap"><table class="acc"><tr><th>portal</th><th class="n">area</th><th class="n">price/m²</th><th class="n">total</th><th class="n">district</th></tr>' + rows + "</table></div>" +
+      "<p>The samples are small (15 to 30 ads per portal), so a portal could be a few percent worse than its row shows, and a mistake the reader shares with this tool would not show up here. The misses were ads whose own text contradicts itself or lists several plots. “Right” means the ad was read correctly, not that the ad is true: a seller can state a wrong area or an unrealistic price. Measured " + L.esc(m.accuracy.as_of) + ".</p>" +
+      (m.accuracy.note ? '<p class="foot">' + L.esc(m.accuracy.note) + "</p>" : "");
+  }
+  /** How old the data is, said where the reader is deciding how far to trust the page. */
+  function dataAgeHTML(m) {
+    const f = L.freshness(m.refresh, new Date());
+    return '<h3 class="sec">How old is the data?</h3><p>' + (f ? L.esc(f.text) + " (counted from the moment this page was opened). " : "") +
+      "Ads are collected every night the computer that runs this tool is on, and the site you are reading is published by hand, so it can lag behind. Page built " + L.esc(m.built_at) + ".</p>";
+  }
   function aboutHTML() {
     const m = D.meta;
     return "<p>A personal screening tool for Nepali land. Listings are gathered from public classifieds portals; each links back to the original ad. Contact details, photos and full descriptions are not republished.</p>" +
+      '<h3 class="sec">What this is, and is not</h3>' +
+      "<p><b>It is</b> a way to read the public land ads of " + m.sources.filter((x) => x.n > 0).length + " Nepali classifieds portals side by side: the area, the price per m², where the plot is and what the ad says, each checked against the ad’s own words and graded high, medium or low.</p>" +
+      "<p><b>It is not</b> a valuation, and not a list of everything for sale: an ad that is on none of these portals is invisible here. Prices are what sellers <i>ask</i>, and are usually negotiable. An ad being listed does not prove the plot is still for sale, that the seller owns it, or that the title is clear. Portals rarely take an ad down, so an old ad may be long sold; the date shown is the portal’s own.</p>" +
+      "<p><b>“Missing” or “unknown”</b> means the ad does not say it and this tool will not guess: a blank is better than a confident wrong number.</p>" +
+      accuracyHTML(m) + dataAgeHTML(m) +
       '<h3 class="sec">How to read it</h3><p>There is no single score. Each ad has a fact-check (the “X-Ray”) made of separate factors, each with its source. A factor with no data is shown as <b>missing</b>, never estimated. “Similar ads” (comps) are other ads of similar size, nearest first (same municipality, then a radius, then the district); a district-wide comparison is marked <b>weak</b>.</p>' +
       '<h3 class="sec">My finder</h3><p>Say what you want: districts, size, budget, a road, ground elevation, places to be near (a palika, a landmark, or any point you click on the map), distance to a city, how recently posted, price against comparable ads, and what the ad says (a view, farming, water…). Each criterion is a <b>must</b> or a <b>nice to have</b> and is judged pass, fail or <b>unknown</b>; the funnel shows where ads drop out and how many more would match if you relaxed one. Your criteria stay in this browser. There is no score.</p>' +
       '<h3 class="sec">Units</h3><p>Every price is stored as NPR per m² and only shown in the unit you pick. Hill and Terai units are not interchangeable by eye: 1 aana ≈ 1.88 dhur. Positional notation like 2-10-5 is shown only where the district’s system is known.</p>' +
@@ -457,12 +486,53 @@
       '<h3 class="sec">Data and credits</h3><p>Boundaries: Survey Department of Nepal via UN OCHA / HDX (CC BY-IGO). Places: GeoNames (CC BY 4.0). Map tiles: © OpenStreetMap contributors. Leaflet (BSD-2). Fonts Orbitron and Share Tech Mono (OFL).</p>' +
       "<p class=\"foot\">Built " + L.esc(m.built_at) + ".</p>";
   }
-  function watchHTML() {
-    const ids = Object.keys(S.watch).filter((i) => byId.has(i));
-    if (!ids.length) return '<p class="empty">Nothing saved yet. Tap ☆ Save on a plot to shortlist it. Saved plots and notes live only in this browser; export them to keep a copy.</p>';
-    return "<table><tr><th>listing</th><th class=n>price</th><th>note</th></tr>" + ids.map((i) => { const l = byId.get(i), n = store.get("jagga.note." + i, "");
-      return '<tr><td><button class="btn btn-ghost" type="button" data-open="' + i + '"><span>' + L.esc(l.t.slice(0, 48)) + '</span></button></td><td class="n">' + L.esc(priceText(l)) + "</td><td>" + L.esc(n.slice(0, 80)) + "</td></tr>"; }).join("") + "</table>" +
-      '<p><button class="btn btn-primary" type="button" id="wPrint"><span>Print shortlist</span></button> <button class="btn btn-outline" type="button" id="wExport"><span>Export JSON</span></button> <label class="btn btn-outline" style="display:inline-block"><span>Import JSON</span><input id="wImport" type="file" accept="application/json" class="sr"></label></p>';
+  const snapKey = (i) => "jagga.snap." + i;
+  /** Where a portal has never been seen to take an ad down or mark it sold, a re-check cannot tell a live ad from a dead one: say so. */
+  function neverRemoves(l) {
+    const s = D.meta.sources.find((x) => x.source === l.src);
+    return s && s.n >= 30 && s.removed === 0 ? '<p class="foot">We have never seen ' + L.esc(l.src) + " take an ad down or mark one sold, so a re-check here cannot prove this plot is still for sale. Ask the seller.</p>" : "";
+  }
+  function watchRows() {
+    return Object.keys(S.watch).map((i) => {
+      const l = byId.get(i), n = store.get("jagga.note." + i, "");
+      if (l) return '<tr><td><button class="btn btn-ghost" type="button" data-open="' + i + '"><span>' + L.esc(l.t.slice(0, 48)) + '</span></button></td><td class="n">' + L.esc(priceText(l)) + "</td><td>" + L.esc(n.slice(0, 80)) + "</td></tr>";
+      const sn = store.get(snapKey(i), null), title = L.esc(((sn && sn.t) || "A saved plot").slice(0, 48));                   // the portal took the ad down: the plot, its price and your note are still yours
+      return '<tr class="gone-row"><td>' + (sn && sn.url ? '<a href="' + L.esc(L.safeUrl(sn.url)) + '" target="_blank" rel="noopener noreferrer">' + title + " ↗</a>" : title) +
+        '<br><span class="dim">no longer in the data: the portal may have taken it down</span></td><td class="n">' + (sn && sn.tot != null ? L.esc(L.fmtMoney(sn.tot)) + " total" : "") + "</td><td>" + L.esc(n.slice(0, 80)) + "</td></tr>";
+    }).join("");
+  }
+  function watchHTML(msg) {
+    const ids = Object.keys(S.watch);
+    return (msg ? '<p class="status" role="status">' + L.esc(msg) + "</p>" : "") +
+      (ids.length ? "<table><tr><th>listing</th><th class=n>price</th><th>note</th></tr>" + watchRows() + "</table>"
+        : '<p class="empty">Nothing saved yet. Tap ☆ Save on a plot to shortlist it. Saved plots and notes live only in this browser: back them up below, or bring a backup in.</p>') +
+      "<p>" + (ids.length ? '<button class="btn btn-primary" type="button" id="wPrint"><span>Print shortlist</span></button> ' : "") +
+      '<button class="btn btn-outline" type="button" id="wExport"><span>Back up to a file</span></button> <label class="btn btn-outline" style="display:inline-block"><span>Restore from a backup</span><input id="wImport" type="file" accept="application/json,.json" class="sr"></label></p>' +
+      '<p class="foot">A backup holds your saved plots, notes, saved searches and finder criteria, and nothing else. It stays on your device unless you send it somewhere.</p>';
+  }
+  function backupNow() {
+    const notes = {}, snaps = {};
+    Object.keys(S.watch).forEach((i) => {
+      const n = store.get("jagga.note." + i, ""); if (n) notes[i] = n;
+      const sn = byId.has(i) ? L.snapOf(byId.get(i)) : store.get(snapKey(i), null); if (sn) snaps[i] = sn;
+    });
+    return L.makeBackup({ watch: S.watch, notes, snaps, searches: saved(), profile: store.get("jagga.profile", "") }, new Date());
+  }
+  /** Bring a backup file in: merges (the file wins for the same plot), never removes what is already here. -> the sentence to show. */
+  function restoreBackup(text) {
+    const r = L.parseBackup(text);
+    if (!r.ok) return r.error;
+    let gone = 0;
+    Object.keys(r.watch).forEach((i) => { S.watch[i] = r.watch[i]; if (!byId.has(i)) gone++; });
+    Object.keys(r.notes).forEach((i) => store.set("jagga.note." + i, r.notes[i]));
+    Object.keys(r.snaps).forEach((i) => { if (!store.get(snapKey(i), null)) store.set(snapKey(i), r.snaps[i]); });
+    const all = saved(); Object.keys(r.searches).forEach((n) => { all[n] = r.searches[n]; }); store.set("jagga.saved", all);
+    let crit = "";
+    if (r.profile && !F.activeIds(S.profile, FLAGS).length) { store.set("jagga.profile", r.profile); S.profile = loadProfile(); recomputeFinder(); crit = " and your finder criteria"; }
+    store.set("jagga.watch", S.watch); $("watchCount").textContent = Object.keys(S.watch).length; renderSaved(); renderList();
+    const np = Object.keys(r.watch).length, nn = Object.keys(r.notes).length, ns = Object.keys(r.searches).length;
+    return "Restored " + np + " saved plot" + (np === 1 ? "" : "s") + (gone ? " (" + gone + " no longer in the data)" : "") + ", " + nn + " note" + (nn === 1 ? "" : "s") + ", " + ns + " saved search" + (ns === 1 ? "" : "es") + crit + "." +
+      (r.dropped ? " " + r.dropped + " entr" + (r.dropped === 1 ? "y" : "ies") + " in the file could not be used and " + (r.dropped === 1 ? "was" : "were") + " skipped." : "");
   }
 
   // ---------- downloads ----------
@@ -479,7 +549,7 @@
 
   // ---------- events ----------
   function toggleWatch(id) {
-    if (S.watch[id]) delete S.watch[id]; else { S.watch[id] = "watching"; loadDetail([id]).catch(() => {}); }          // saved now, so the shortlist works offline later
+    if (S.watch[id]) delete S.watch[id]; else { S.watch[id] = "watching"; if (byId.has(id)) store.set(snapKey(id), L.snapOf(byId.get(id))); loadDetail([id]).catch(() => {}); }          // saved now, so the shortlist works offline later
     store.set("jagga.watch", S.watch); $("watchCount").textContent = Object.keys(S.watch).length; renderList();
     if (S.sel === id) openDrawer(id);
   }
@@ -907,6 +977,7 @@
     if (S.f.fresh) { S.f.age = "7"; delete S.f.fresh; }          // old shared links used fresh=1 ("new this week")
     writeUI();
     $("watchCount").textContent = Object.keys(S.watch).length;
+    Object.keys(S.watch).forEach((i) => { if (byId.has(i) && !store.get(snapKey(i), null)) store.set(snapKey(i), L.snapOf(byId.get(i))); });          // plots saved before records existed
     $("foot").innerHTML = "Built " + L.esc(D.meta.built_at) + " · " + D.meta.sources.map((s) => L.esc(s.source) + " fetched " + L.esc(s.last_fetch || "never")).join(" · ") +
       ' · <button class="btn btn-ghost" type="button" data-cov="1"><span>' + D.meta.nation.districts[0] + "/" + D.meta.nation.districts[1] + " districts covered</span></button><br>Screening tool, not advice.";
     initMap(); recomputeFinder(); initSince(); renderFresh(); initOffline(); syncTopHeight(); window.addEventListener("resize", debounce(syncTopHeight, 100)); readUI(); renderList();
@@ -999,15 +1070,12 @@
       if (d) { const all = saved(); delete all[d.dataset.delsaved]; store.set("jagga.saved", all); renderSaved(); $("mBody").innerHTML = savedHTML(); }
       if (e.target.closest("[data-copy]")) copyLink();
       if (e.target.closest("#wPrint")) printShortlist();
-      if (e.target.id === "wExport") download("jaggasignal-watchlist.json", "application/json", JSON.stringify({ watch: S.watch, notes: Object.keys(S.watch).reduce((o, i) => (o[i] = store.get("jagga.note." + i, ""), o), {}) }, null, 2));
+      if (e.target.closest("#wExport")) download("jaggasignal-backup-" + new Date().toISOString().slice(0, 10).replace(/-/g, "") + ".json", "application/json", JSON.stringify(backupNow(), null, 2));
     });
     document.addEventListener("change", (e) => {
       if (e.target.id !== "wImport" || !e.target.files[0]) return;
-      e.target.files[0].text().then((t) => { try { const j = JSON.parse(t);
-        Object.keys(j.watch || {}).forEach((i) => { if (byId.has(i)) S.watch[i] = String(j.watch[i]).slice(0, 20); });
-        Object.keys(j.notes || {}).forEach((i) => { if (byId.has(i)) store.set("jagga.note." + i, String(j.notes[i]).slice(0, 4000)); });
-        store.set("jagga.watch", S.watch); $("watchCount").textContent = Object.keys(S.watch).length; $("mBody").innerHTML = watchHTML(); renderList();
-      } catch (err) { $("mBody").insertAdjacentHTML("afterbegin", '<p class="empty">That file is not a valid saved-plots export.</p>'); } });
+      e.target.files[0].size > 2e6 ? ($("mBody").innerHTML = watchHTML("That file is too large to be a backup.")) :
+        e.target.files[0].text().then((t) => { $("mBody").innerHTML = watchHTML(restoreBackup(t)); }).catch(() => { $("mBody").innerHTML = watchHTML("That file could not be read."); });
     });
   }
   function debounce(fn, ms) { let t; return function () { clearTimeout(t); t = setTimeout(fn, ms); }; }

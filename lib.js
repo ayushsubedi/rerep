@@ -107,6 +107,17 @@
     return { stale: false, text: "Data refreshed " + say(newest), detail: detail };
   }
 
+  /** The About page's accuracy numbers, from meta.accuracy (counts of values that were read from the ad's own words by an AI reader and did or did not match).
+   *  -> {rows: [{source, n, cells: [{text: "28/29", miss}]}], line} for the order area, price per m2, total, district; null when nothing was measured. */
+  function accuracyView(acc) {
+    if (!acc || !acc.sources || !acc.sources.length || !(acc.checked > 0)) return null;
+    const cell = function (a) { return { text: a[0] + "/" + a[1], miss: a[0] < a[1] }; };
+    return {
+      rows: acc.sources.map(function (s) { return { source: s.source, n: s.n, cells: [cell(s.area), cell(s.price), cell(s.total), cell(s.district)] }; }),
+      line: acc.right + " of the " + acc.checked + " values checked matched the ad (" + (100 * acc.right / acc.checked).toFixed(1) + "%)",
+    };
+  }
+
   /** The price guide as display rows. g: window.JAGGA_GUIDE; o: {size: "all"|"small", sort: "n"|"high"|"low"|"name", q, unit, T}.
    *  Values arrive as NPR per m2 and are shown per the chosen unit. A place with fewer than g.min_asks asks gets its count and a grey 'too few', no range. */
   function guideRows(g, o) {
@@ -144,10 +155,20 @@
 
   /** "At a glance": 4-8 plain sentences built ONLY from what is already known about the ad (nothing is estimated here).
    *  o: {today, unit (price unit key), T (unit table), units (area units), flags: meta.flags}. */
+  /** An ad for a RANGE of sizes, or plots of different sizes (`ms`, a neutral fact from the build): no single area and no total are right for it, so they are set aside once, at load, and every
+   *  screen then shows what is true: the size is unknown. A rate the seller stated is kept; a price per unit that was only worked out from a total and an area is dropped. */
+  function multiSize(l) {
+    if (!l.ms || l.msDone) return l;
+    l.msDone = true; l.msA = l.a; l.msTot = l.tot; l.a = null; l.tot = null;
+    if (l.pb !== "per_unit" && l.pb !== "text_rate") l.p = null;
+    return l;
+  }
   function glance(l, o) {
     const out = [], T = o.T, per = function (u) { return fmtMoney(perUnit(l.p, u, T)); };
+    if (l.ms) out.push("This ad covers " + (l.ms === "plots of different sizes" ? "plots of different sizes" : "several sizes (" + l.ms + ")") + ", so there is no single area or total. Ask which plot is meant.");
     if (l.p != null) out.push("Asking " + per(o.unit) + " per " + (o.unit === "sqft" ? "sq ft" : o.unit === "sqm" ? "m²" : o.unit) + (l.tot ? ", " + fmtMoney(l.tot) + " for the whole plot" : "") + ".");
     else if (l.tot) out.push("Asking " + fmtMoney(l.tot) + " for the whole plot. The area could not be read, so there is no price per aana to compare.");
+    else if (l.ms && l.msTot) out.push("The ad states " + fmtMoney(l.msTot) + ", but not for which size, so there is no price per aana to compare.");
     if (l.p != null) {
       if (l.c && l.c.rel !== "weak") out.push("Cheaper than about " + (100 - l.c.p) + "% of the " + l.c.n + " similar ads nearby (same area, land type and road).");
       else if (l.c) out.push("Only compared with the whole district, which is a weak comparison: locations differ a lot.");
@@ -210,9 +231,10 @@
       if ((pmin != null || pmax != null) && l.p == null) return false;
       if (pmin != null && l.p < pmin) return false;
       if (pmax != null && l.p > pmax) return false;
-      if ((amin != null || amax != null) && l.a == null) return false;
-      if (amin != null && l.a < amin) return false;
-      if (amax != null && l.a > amax) return false;
+      if (amin != null || amax != null) {
+        if (l.a == null) { if (!l.ms) return false; }                                // several sizes: a plot in the wanted range cannot be ruled out
+        else if ((amin != null && l.a < amin) || (amax != null && l.a > amax)) return false;
+      }
       if (f.road && (l.road == null || l.road < +f.road)) return false;
       if (f.fresh && !isNewAd(l, today)) return false;
       if (f.age) {                                       // posted within N days, by the PORTAL's date; undated ads cannot qualify
@@ -283,7 +305,7 @@
   // -- exports (F18) -------------------------------------------------------------------------
   const CSV_COLS = [["id", "id"], ["title", "t"], ["locality", "loc"], ["palika", "pal"], ["district", "dis"], ["area_sqm", "a"],
     ["npr_per_sqm", "p"], ["price_total_npr", "tot"], ["road_ft", "road"], ["source", "src"], ["url", "url"], ["first_seen", "fs"],
-    ["last_seen", "ls"], ["price_confidence", "pc"], ["lat", "lat"], ["lon", "lon"], ["location_precision", "prec"]];
+    ["last_seen", "ls"], ["sizes_range", "ms"], ["price_confidence", "pc"], ["lat", "lat"], ["lon", "lon"], ["location_precision", "prec"]];
   function csvCell(v) {
     if (v == null) return "";
     let s = String(v);
@@ -327,5 +349,35 @@
       return '<li><span class="who">' + esc(WHO[a.o] || a.o) + "</span> " + esc(a.a) + ' <span class="' + (cls || "why") + '">Because: ' + esc(a.w) + "</span></li>";
     }).join("");
   }
-  return { askHTML, histogram, unitTable, perUnit, toPps, fmtMoney, areaNotation, areaPlain, niceTitle, relTime, whenText, compsPlain, glance, freshness, guideRows, daysSince, isNewAd, postedSince, isCut, compsLabel, filter, sort, toHash, parseHash, toCSV, toGeoJSON, toKML, esc, safeUrl };
+  // -- the visitor's own work (saved plots, notes, saved searches, finder criteria): a backup file, parsed as untrusted input ------------------
+  var HEXID = /^[0-9a-f]{6,32}$/, B64URL = /^[A-Za-z0-9_-]{0,6000}$/;
+  var cut = function (v, n) { return String(v == null ? "" : v).slice(0, n); };
+  /** A small record of a plot, kept when it is saved, so it can still be shown (with its note) after the portal takes the ad down and it leaves the data. */
+  function snapOf(l) {
+    return { t: cut(l.t, 160), loc: cut(l.loc || l.pal, 80), dis: cut(l.dis, 40), tot: l.tot != null && isFinite(+l.tot) ? +l.tot : null, url: /^https?:\/\//i.test(l.url || "") ? cut(l.url, 500) : "", po: /^\d{4}-\d{2}-\d{2}$/.test(l.po || "") ? l.po : "" };
+  }
+  function makeBackup(s, now) {
+    return { app: "jaggasignal", v: 2, saved_at: now.toISOString(), watch: s.watch || {}, notes: s.notes || {}, snaps: s.snaps || {}, searches: s.searches || {}, profile: s.profile || "" };
+  }
+  /** -> {ok: true, watch, notes, snaps, searches, profile, dropped} or {ok: false, error}. Reads the old export too ({watch, notes}). Anything malformed is dropped and counted, never stored. */
+  function parseBackup(text) {
+    var j, out = { ok: true, watch: {}, notes: {}, snaps: {}, searches: {}, profile: "", dropped: 0 };
+    try { j = JSON.parse(text); } catch (e) { return { ok: false, error: "That file is not a backup: it is not JSON." }; }
+    if (!j || typeof j !== "object" || Array.isArray(j) || !(j.watch || j.notes || j.searches || j.profile)) return { ok: false, error: "That file is not a Jaggasignal backup." };
+    var each = function (o, max, fn) {
+      if (!o || typeof o !== "object" || Array.isArray(o)) return;
+      Object.keys(o).slice(0, max).forEach(function (k) { if (!fn(k, o[k])) out.dropped++; });
+    };
+    each(j.watch, 500, function (id, v) { if (!HEXID.test(id)) return false; out.watch[id] = /^[A-Za-z ]{1,20}$/.test(String(v)) ? String(v) : "watching"; return true; });
+    each(j.notes, 500, function (id, v) { if (!HEXID.test(id) || typeof v !== "string") return false; if (v) out.notes[id] = v.slice(0, 4000); return true; });
+    each(j.snaps, 500, function (id, v) {
+      if (!HEXID.test(id) || !v || typeof v !== "object") return false;
+      out.snaps[id] = snapOf(v); return true;
+    });
+    each(j.searches, 100, function (name, v) { if (!name || name.length > 60 || typeof v !== "string" || v.length > 2000) return false; out.searches[name] = v; return true; });
+    if (typeof j.profile === "string" && j.profile) { if (B64URL.test(j.profile)) out.profile = j.profile; else out.dropped++; }
+    return out;
+  }
+
+  return { askHTML, histogram, unitTable, perUnit, toPps, fmtMoney, areaNotation, areaPlain, niceTitle, relTime, whenText, compsPlain, glance, freshness, accuracyView, guideRows, daysSince, isNewAd, postedSince, isCut, compsLabel, filter, sort, toHash, parseHash, toCSV, toGeoJSON, toKML, esc, safeUrl, snapOf, makeBackup, parseBackup, multiSize };
 });

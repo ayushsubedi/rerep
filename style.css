@@ -159,7 +159,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .notes:focus { border-color: var(--brand); outline: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 22%, transparent); }
 .modal { width: min(860px, 94vw); max-height: 88vh; padding: 0; border: 0; border-radius: 16px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); overflow: auto; }
 .modal::backdrop { background: rgba(15, 21, 18, .55); backdrop-filter: blur(3px); }
-table { border-collapse: collapse; width: 100%; font-size: 14px; } th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); } th { color: var(--ink-3); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; } td.n, th.n { text-align: right; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; } th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); } th { color: var(--ink-3); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; } td.n, th.n { text-align: right; } td.n.bad { color: var(--bad); font-weight: 700; }
+table.acc th, table.acc td { padding: 7px 4px; } table.acc th { font-size: 10px; letter-spacing: 0; } table.acc td { font-size: 13px; } table.acc td small { display: block; color: var(--ink-3); font-size: 11px; }
+@media (max-width: 380px) { table.acc th, table.acc td { padding-left: 2px; padding-right: 2px; } table.acc td { font-size: 12px; } }
 .bar { display: inline-block; height: 8px; background: var(--brand); border-radius: 4px; vertical-align: middle; }
 .tabbar { display: none; }
 
@@ -325,3 +327,11 @@ body.picks-open:not(.sel-open) .split, body.picks-open:not(.sel-open) .filters {
 .pk-preset:hover { border-color: var(--brand); } .pk-preset b { font: 650 1.1rem var(--font-display); } .pk-preset span { font-size: 14px; color: var(--ink-2); }
 .pk-saved { list-style: none; margin: 0; padding: 0; display: grid; } .pk-saved li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); } .pk-saved .dim { grid-column: 1 / -1; font-size: 13.5px; }
 .pk-copied { font-size: 14px; color: var(--good); }
+
+/* saved plots: a restore message, and plots whose ad has left the data */
+p.status { background: var(--brand-soft); border-radius: var(--r-sm); padding: 10px 12px; margin: 0 0 12px; color: var(--ink); }
+.gone-row td { color: var(--ink-2); } .gone-row .dim { font-size: 13px; }
+
+/* the map legend's second row: how precisely an ad is placed (a dashed ring = the centre of its municipality, not the plot) */
+.legend .lg-row { margin-top: 4px; } .sw-exact { background: var(--ink-2); } .sw-area { background: transparent; border: 2px dashed var(--ink-2); width: 13px; height: 13px; box-sizing: border-box; }
+.cl.area { border-style: dashed; }                                  /* a circle of area-only ads: the centre of a municipality, not a place */

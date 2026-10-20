@@ -89,7 +89,7 @@
     }
     if (id === "where") return r.dis.indexOf(l.dk) >= 0 ? res("pass", l.dis || "") : res("fail", (l.dis || "another district") + " is not one of the chosen districts");
     if (id === "size") {
-      if (l.a == null) return res("unknown", "the ad's area could not be read");
+      if (l.a == null) return res("unknown", l.ms ? "the ad covers " + (l.ms === "plots of different sizes" ? "plots of different sizes" : "several sizes (" + l.ms + ")") + ": the size depends on which plot" : "the ad's area could not be read");
       const v = l.a / T[r.unit], lo = num(r.min), hi = num(r.max), shown = (Math.round(v * 10) / 10) + " " + r.unit;
       if (lo != null && v < lo) return res("fail", shown + " (wanted at least " + lo + ")");
       if (hi != null && v > hi) return res("fail", shown + " (wanted at most " + hi + ")");
@@ -99,7 +99,7 @@
       const tmax = num(r.total), pmax = num(r.pmax), out = [];
       let fail = false, unk = false;
       if (tmax != null) {
-        if (l.tot == null) { unk = true; out.push("no total price known"); }
+        if (l.tot == null) { unk = true; out.push(l.ms ? "the total depends on which plot (several sizes)" : "no total price known"); }
         else if (l.tot > tmax) { fail = true; out.push("Rs " + nf(l.tot) + " total (over Rs " + nf(tmax) + ")"); } else out.push("Rs " + nf(l.tot) + " total");
       }
       if (pmax != null) {
