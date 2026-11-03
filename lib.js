@@ -381,17 +381,25 @@
   var XML_BAD = /[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g;       // not allowed in XML 1.0: one stray control character in a scraped title would make Earth refuse the whole file
   function xmlEsc(s) { return String(s == null ? "" : s).replace(XML_BAD, "").replace(/[<>&"']/g, function (c) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" }[c]; }); }
 
+  /** The shape of the data these scripts read (site.py DATA_FORMAT writes it). A browser can keep OLD scripts next to NEW data (the scripts are cache-first, the data network-first):
+   *  app.js compares the two and asks for a fresh copy instead of printing what it cannot read. Bump both together when a field's shape changes. */
+  var FORMAT = 2;
+
   // -- Google Earth ----------------------------------------------------------------------------------------------------------
   /** A usable point: both numbers, on the globe. The data holds 8 to 15 decimals; 5 (about a metre) is all anyone can use. */
   function hasPoint(l) { return !!l && typeof l.lat === "number" && typeof l.lon === "number" && isFinite(l.lat) && isFinite(l.lon) && Math.abs(l.lat) <= 90 && Math.abs(l.lon) <= 180; }
   /** Camera distance in metres. The vaguer the pin, the wider the view, so a municipality centre never looks like 'the plot is here'. */
-  var EARTH_RANGE = { exact: 1500, locality: 5000, palika: 15000 };
-  /** Google documents no link format for opening Earth at a point. This is the one its own share links use (@lat,lon, ground height a, camera distance d, field of view y,
-   *  heading h, tilt t, roll r). It can change without notice: the KML file is the dependable route. */
+  var EARTH_RANGE = { exact: 350, locality: 2500, palika: 15000 };
+  /** Google documents no link format for opening Earth at a point; these two are the ones its own pages produce, and both can change without notice (the KML file is the dependable route).
+   *  An EXACT pin (the ad's own point): `/web/search/lat,lon`, which drops a marker and shows the coordinates; Earth picks the camera (about 700 m). Putting our own camera in that
+   *  address makes Earth drop the marker (tried in a real browser), so a marker costs us the zoom.
+   *  Any vaguer pin gets NO marker, because a marker at a municipality centre would claim more than we know: `/web/@lat,lon,ground a,camera distance d,field of view y,heading h,tilt t,roll r`. */
   function earthUrl(l) {
     if (!hasPoint(l)) return null;
+    var at = (+l.lat.toFixed(5)) + "," + (+l.lon.toFixed(5));
+    if (l.prec === "exact") return "https://earth.google.com/web/search/" + at;
     var ground = typeof l.el === "number" && isFinite(l.el) ? Math.round(l.el) : 0;
-    return "https://earth.google.com/web/@" + (+l.lat.toFixed(5)) + "," + (+l.lon.toFixed(5)) + "," + ground + "a," + (EARTH_RANGE[l.prec] || EARTH_RANGE.palika) + "d,35y,0h,0t,0r";
+    return "https://earth.google.com/web/@" + at + "," + ground + "a," + (EARTH_RANGE[l.prec] || EARTH_RANGE.palika) + "d,35y,0h,0t,0r";
   }
   /** What the pin means. A pin is evidence, not truth: even an 'exact' one is the portal's or the seller's claim. */
   function earthNote(l) {
@@ -465,5 +473,5 @@
     return out;
   }
 
-  return { t, msg, factor, msText, setLang, getLang, flagLabel, digits, nfmt, toAscii, catalogs, askHTML, histogram, unitTable, perUnit, toPps, fmtMoney, areaNotation, areaPlain, niceTitle, relTime, whenText, compsPlain, glance, freshness, accuracyView, guideRows, daysSince, isNewAd, postedSince, isCut, compsLabel, filter, sort, toHash, parseHash, toCSV, toGeoJSON, toKML, hasPoint, earthUrl, earthNote, coordsText, esc, safeUrl, snapOf, makeBackup, parseBackup, multiSize };
+  return { FORMAT, t, msg, factor, msText, setLang, getLang, flagLabel, digits, nfmt, toAscii, catalogs, askHTML, histogram, unitTable, perUnit, toPps, fmtMoney, areaNotation, areaPlain, niceTitle, relTime, whenText, compsPlain, glance, freshness, accuracyView, guideRows, daysSince, isNewAd, postedSince, isCut, compsLabel, filter, sort, toHash, parseHash, toCSV, toGeoJSON, toKML, hasPoint, earthUrl, earthNote, coordsText, esc, safeUrl, snapOf, makeBackup, parseBackup, multiSize };
 });

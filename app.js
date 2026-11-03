@@ -19,6 +19,19 @@
   })();
   L.setLang(LANGPREF.lang, LANGPREF.digits);
   document.documentElement.lang = L.getLang();
+
+  // ---------- scripts and data from different builds: say so, never print what cannot be read ----------
+  // A browser keeps the scripts (cache-first) from the build it first saw while the data is fetched fresh, so after a change in the data's shape an open or installed copy can pair old scripts with new data.
+  if ((D.meta.format || 1) !== L.FORMAT) { staleCopy(); return; }
+  /** Ask the browser for the newest copy once (this tab, this session); if the mismatch is still there, tell the visitor how to get past it. */
+  function staleCopy() {
+    const key = "jagga.fmt", seen = (() => { try { return sessionStorage.getItem(key) === String(D.meta.format || 1); } catch (e) { return true; } })();
+    const b = $("staleBanner"); b.textContent = L.t("ui.stale"); b.hidden = false;
+    if (seen) return;
+    try { sessionStorage.setItem(key, String(D.meta.format || 1)); } catch (e) { return; }
+    const reload = () => location.reload(), reg = navigator.serviceWorker && navigator.serviceWorker.getRegistration ? navigator.serviceWorker.getRegistration() : null;
+    if (reg) reg.then((r) => r && r.update()).catch(() => {}).then(() => setTimeout(reload, 1500)); else reload();
+  }
   /** English is the page as written; in Nepali the marked text, attributes and option lists are swapped for the catalog's. The first text node is replaced and its children (the counters) kept. */
   function applyStatic() {
     if (L.getLang() === "en") return;
