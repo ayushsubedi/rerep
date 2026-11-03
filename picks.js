@@ -4,44 +4,46 @@
  * saying whether anything fits (and which rule removes the most ads when nothing does), and the few ads worth a phone call, best first. Nothing here is new data and
  * nothing is scored: the order is finder.js's own (tier, then wishes met, then price). */
 (function (root, factory) {
-  if (typeof module === "object" && module.exports) module.exports = factory();
-  else root.JaggaPicks = factory();
-})(typeof self !== "undefined" ? self : this, function () {
+  if (typeof module === "object" && module.exports) module.exports = factory(require("./lib.js"));
+  else root.JaggaPicks = factory(root.JaggaLib);
+})(typeof self !== "undefined" ? self : this, function (Lib) {
   "use strict";
+  const t = Lib.t;
 
   const num = function (v) { if (v === "" || v == null) return null; const n = +v; return isFinite(n) ? n : null; };
-  const nf = function (x) { return Math.round(x).toLocaleString("en-US"); };
-  const plural = function (n, one, many) { return n + " " + (n === 1 ? one : many || one + "s"); };
-  const list = function (xs) { return xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " or " + xs[xs.length - 1]; };
+  const nf = function (x) { return Lib.nfmt(Math.round(x)); };
+  /** "one ad" / "3 ads": a count with its noun (the catalog has a form for one and for many; Nepali has the same for both). */
+  const count = function (n, key) { return t(key + (n === 1 ? ".one" : ".many"), { n: n }); };
+  const list = function (xs) { return xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + t("picks.or") + xs[xs.length - 1]; };
 
   /** One criterion in plain words. `o`: {money: n -> 'Rs 35 lakh', district: id -> name, flags: [{k, label}]}. */
   function say(id, r, o) {
-    const money = o.money || function (v) { return "Rs " + nf(v); };
+    const money = o.money || function (v) { return t("money.plain", { n: nf(v) }); };
     if (id.slice(0, 5) === "flag_") {
       const f = (o.flags || []).filter(function (x) { return "flag_" + x.k === id; })[0];
-      return "The ad mentions " + (f ? f.label : id.slice(5));
+      return t("picks.say.flag", { w: f ? Lib.flagLabel(f) : id.slice(5) });
     }
-    if (id === "where") return "In " + list(r.dis.map(function (d) { return (o.district || String)(d); }));
+    if (id === "where") return t("picks.say.where", { list: list(r.dis.map(function (d) { return (o.district || String)(d); })) });
     if (id === "size") {
-      const lo = num(r.min), hi = num(r.max);
-      return lo != null && hi != null ? "Between " + lo + " and " + hi + " " + r.unit : lo != null ? "At least " + lo + " " + r.unit : "At most " + hi + " " + r.unit;
+      const lo = num(r.min), hi = num(r.max), unit = t("finder.unit." + r.unit);
+      return lo != null && hi != null ? t("picks.say.size.between", { lo: lo, hi: hi, unit: unit }) : lo != null ? t("picks.say.size.min", { lo: lo, unit: unit }) : t("picks.say.size.max", { hi: hi, unit: unit });
     }
     if (id === "budget") {
-      const t = num(r.total), p = num(r.pmax), out = [];
-      if (t != null) out.push("Up to " + money(t) + " in total");
-      if (p != null) out.push((t != null ? "up to " : "Up to ") + money(p) + " per " + r.punit);
-      return out.join(", or ");
+      const tot = num(r.total), p = num(r.pmax), out = [], u = t("finder.unit." + r.punit);
+      if (tot != null) out.push(t("picks.say.bud.total", { m: money(tot) }));
+      if (p != null) out.push(t(tot != null ? "picks.say.bud.per.next" : "picks.say.bud.per.first", { m: money(p), u: u }));
+      return out.join(t("picks.say.bud.or"));
     }
-    if (id === "road") return "A road at least " + r.min + " ft wide";
+    if (id === "road") return t("picks.say.road", { n: r.min });
     if (id === "hills") {
       const lo = num(r.min), hi = num(r.max);
-      return lo != null && hi != null ? "On ground between " + nf(lo) + " and " + nf(hi) + " m above sea level" : lo != null ? "On ground at least " + nf(lo) + " m above sea level" : "On ground at most " + nf(hi) + " m above sea level";
+      return lo != null && hi != null ? t("picks.say.hills.between", { lo: nf(lo), hi: nf(hi) }) : lo != null ? t("picks.say.hills.min", { lo: nf(lo) }) : t("picks.say.hills.max", { hi: nf(hi) });
     }
-    if (id === "near") return "Within " + list(r.places.map(function (p) { return p.km + " km of " + p.n; }));
-    if (id === "city") return "Within " + r.km + " km of a city";
-    if (id === "fresh") return "Posted in the last " + plural(+r.days, "day");
-    if (id === "value") return "Priced among the cheapest " + r.pct + "% for its area";
-    if (id === "trust") return "A price reading we can trust";
+    if (id === "near") return t("picks.say.near", { list: list(r.places.map(function (p) { return t("picks.say.near.item", { km: p.km, n: p.n }); })) });
+    if (id === "city") return t("picks.say.city", { km: r.km });
+    if (id === "fresh") return t(+r.days === 1 ? "picks.say.fresh.one" : "picks.say.fresh.many", { n: +r.days });
+    if (id === "value") return t("picks.say.value", { pct: r.pct });
+    if (id === "trust") return t("picks.say.trust");
     return id;
   }
 
@@ -80,20 +82,20 @@
     const lines = [];
     let head;
     if (c[3] > 0) {
-      head = plural(c[3], "ad meets", "ads meet") + " every must-have.";
-      if (c[2] > 0) lines.push(plural(c[2], "more could", "more could") + ": nothing fails, but the ad does not say something the rule needs.");
+      head = count(c[3], "picks.v.head.match");
+      if (c[2] > 0) lines.push(t("picks.v.more", { n: c[2] }));
     } else if (c[2] > 0) {
-      head = "No ad is proven to meet every must-have.";
-      lines.push(plural(c[2], "ad could", "ads could") + ": nothing fails, but each leaves out a fact (the road, the height, the date). A phone call settles it.");
+      head = t("picks.v.head.could");
+      lines.push(count(c[2], "picks.v.could"));
     } else if (c[1] > 0) {
-      head = "No ad meets every must-have.";
-      lines.push(plural(c[1], "ad misses", "ads miss") + " by exactly one rule.");
+      head = t("picks.v.head.miss");
+      lines.push(count(c[1], "picks.v.miss"));
     } else {
-      head = "Nothing is close to what you asked for.";
+      head = t("picks.v.head.none");
     }
-    if (c[3] === 0 && out) lines.push("The ads run out at “" + out.label + "”: of the " + plural(out.of, "ad") + " that reach it, " + nf(out.fail) + " fail" + (out.unknown ? " and " + nf(out.unknown) + " do not say" : "") + ".");
-    else if (c[3] === 0 && drop) lines.push("The rule that removes the most ads is “" + drop.label + "”: " + nf(drop.lost) + " of " + nf(drop.of) + " fall out there.");
-    if (c[3] === 0 && gain) lines.push("If “" + gain.label + "” were only nice to have, " + plural(gain.gain, "more ad would", "more ads would") + " match.");
+    if (c[3] === 0 && out) lines.push(t("picks.v.out", { label: out.label, of: count(out.of, "picks.n.ad"), fail: nf(out.fail), unk: out.unknown ? t("picks.v.out.unk", { n: nf(out.unknown) }) : "" }));
+    else if (c[3] === 0 && drop) lines.push(t("picks.v.drop", { label: drop.label, lost: nf(drop.lost), of: nf(drop.of) }));
+    if (c[3] === 0 && gain) lines.push(count(gain.gain, "picks.v.gain").replace("{label}", gain.label));
     return { head: head, lines: lines, tone: c[3] > 0 ? "good" : c[2] > 0 || c[1] > 0 ? "warn" : "bad" };
   }
 
@@ -101,7 +103,7 @@
    *  `F`: finder.js (for byFit). -> [{tier, label, items}] with at most `n` items in all. */
   function sections(run, F, n) {
     const byTier = function (t) { return run.items.filter(function (it) { return it.tier === t; }).sort(F.byFit); };
-    const want = [[3, "Match every must-have"], [2, "Could match: a fact is missing"], [1, "Near misses: one rule fails"]];
+    const want = [[3, t("picks.sec.3")], [2, t("picks.sec.2")], [1, t("picks.sec.1")]];
     const out = [];
     let left = n || 12;
     want.forEach(function (w) {

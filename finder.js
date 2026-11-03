@@ -9,25 +9,29 @@
  * `run` also returns the FUNNEL (how many ads survive each must in turn) and, for each must, how many more ads would match if it were relaxed:
  * an empty result then explains itself and shows the way out. Unknown is common (most ads do not say) and is reported, never filled in. */
 (function (root, factory) {
-  if (typeof module === "object" && module.exports) module.exports = factory();
-  else root.JaggaFinder = factory();
-})(typeof self !== "undefined" ? self : this, function () {
+  if (typeof module === "object" && module.exports) module.exports = factory(require("./lib.js"));
+  else root.JaggaFinder = factory(root.JaggaLib);
+})(typeof self !== "undefined" ? self : this, function (Lib) {
   "use strict";
+  const t = Lib.t;                                               // every sentence below is a catalog key (src/jagga/i18n): the wording follows the visitor's language
 
   // id, group, label, params with defaults, default 'must'. Order is the funnel order.
   const ROWS = [
-    { id: "where", group: "The plot", label: "In these districts", must: true, def: { dis: [] } },
-    { id: "size", group: "The plot", label: "Size", must: true, def: { min: "", max: "", unit: "ropani" } },
-    { id: "budget", group: "The plot", label: "Budget", must: true, def: { total: "", pmax: "", punit: "aana" } },
-    { id: "road", group: "The plot", label: "A road at least", must: true, def: { min: "" } },
-    { id: "hills", group: "The plot", label: "Ground elevation", must: true, def: { min: "", max: "" } },
-    { id: "near", group: "Around it", label: "Near a place", must: true, def: { places: [] } },
-    { id: "city", group: "Around it", label: "Close to a city", must: false, def: { km: "" } },
-    { id: "fresh", group: "Trust and timing", label: "Posted recently", must: false, def: { days: "" } },
-    { id: "value", group: "Trust and timing", label: "Priced low for its area", must: false, def: { pct: 50 } },
-    { id: "trust", group: "Trust and timing", label: "A price I can trust", must: false, def: {} }
-  ];
-  const TIER = ["", "near miss", "possible", "match"];
+    { id: "where", gk: "plot", must: true, def: { dis: [] } },
+    { id: "size", gk: "plot", must: true, def: { min: "", max: "", unit: "ropani" } },
+    { id: "budget", gk: "plot", must: true, def: { total: "", pmax: "", punit: "aana" } },
+    { id: "road", gk: "plot", must: true, def: { min: "" } },
+    { id: "hills", gk: "plot", must: true, def: { min: "", max: "" } },
+    { id: "near", gk: "around", must: true, def: { places: [] } },
+    { id: "city", gk: "around", must: false, def: { km: "" } },
+    { id: "fresh", gk: "trust", must: false, def: { days: "" } },
+    { id: "value", gk: "trust", must: false, def: { pct: 50 } },
+    { id: "trust", gk: "trust", must: false, def: {} }
+  ].map(function (row) {         // `label` and `group` are read when needed, so they follow the language chosen at start-up
+    return Object.defineProperties(row, { label: { get: function () { return t("finder.row." + row.id); }, enumerable: true }, group: { get: function () { return t("finder.group." + row.gk); }, enumerable: true } });
+  });
+  const TIER = Object.defineProperties(["", "", "", ""], { 1: { get: function () { return t("finder.tier.1"); }, enumerable: true }, 2: { get: function () { return t("finder.tier.2"); }, enumerable: true }, 3: { get: function () { return t("finder.tier.3"); }, enumerable: true } });
+  const funit = function (u) { return t("finder.unit." + u); };
   const TOL_KM = { exact: 0.2, locality: 1.5, palika: 8 };       // how far a position can be off, by how precisely the ad is located
   const MAX_PLACES = 6;
 
@@ -71,13 +75,15 @@
     const p = Math.PI / 180, x = Math.sin((c - a) * p / 2) ** 2 + Math.cos(a * p) * Math.cos(c * p) * Math.sin((d - b) * p / 2) ** 2;
     return 12742 * Math.asin(Math.sqrt(x));
   }
-  const nf = function (x) { return Math.round(x).toLocaleString("en-US"); };
+  const nf = function (x) { return Lib.nfmt(Math.round(x)); };
   function daysSince(dateStr, today) {
     if (!dateStr) return null;
     const d = Date.parse(dateStr + "T00:00:00Z");
     return isNaN(d) ? null : Math.max(0, Math.floor(((today || new Date()).getTime() - d) / 86400000));
   }
   const res = function (s, e) { return { s: s, e: e }; };
+  /** A wish's words in the chosen language (the data carries the English label of each: used when there is no entry for it). */
+  const flagLabel = Lib.flagLabel;
 
   /** One criterion for one listing -> {s: pass|fail|unknown, e: evidence}. `ctx`: {table: sqm per unit, flags: [{k,label}], today}. */
   function judge(id, r, l, ctx) {
@@ -85,71 +91,71 @@
     if (isFlag(id)) {
       const i = (ctx.flags || []).map(function (f) { return f.k; }).indexOf(id.slice(5));
       const f = ctx.flags[i];
-      return (l.tf || 0) & (1 << i) ? res("pass", "the ad's own words mention it: " + f.label) : res("unknown", "the ad does not say (a view, water or soil cannot be measured from this data)");
+      return (l.tf || 0) & (1 << i) ? res("pass", t("finder.e.flag.yes", { label: flagLabel(f) })) : res("unknown", t("finder.e.flag.no"));
     }
-    if (id === "where") return r.dis.indexOf(l.dk) >= 0 ? res("pass", l.dis || "") : res("fail", (l.dis || "another district") + " is not one of the chosen districts");
+    if (id === "where") return r.dis.indexOf(l.dk) >= 0 ? res("pass", l.dis || "") : res("fail", t("finder.e.where.fail", { d: l.dis || t("finder.e.another") }));
     if (id === "size") {
-      if (l.a == null) return res("unknown", l.ms ? "the ad covers " + (l.ms === "plots of different sizes" ? "plots of different sizes" : "several sizes (" + l.ms + ")") + ": the size depends on which plot" : "the ad's area could not be read");
-      const v = l.a / T[r.unit], lo = num(r.min), hi = num(r.max), shown = (Math.round(v * 10) / 10) + " " + r.unit;
-      if (lo != null && v < lo) return res("fail", shown + " (wanted at least " + lo + ")");
-      if (hi != null && v > hi) return res("fail", shown + " (wanted at most " + hi + ")");
+      if (l.a == null) return res("unknown", l.ms ? (l.ms === "plots of different sizes" ? t("finder.e.size.ms.diff") : t("finder.e.size.ms.several", { ms: Lib.msText(l.ms) })) : t("finder.e.size.unread"));
+      const v = l.a / T[r.unit], lo = num(r.min), hi = num(r.max), shown = t("finder.shown", { n: Math.round(v * 10) / 10, unit: funit(r.unit) });
+      if (lo != null && v < lo) return res("fail", t("finder.e.size.min", { shown: shown, lo: lo }));
+      if (hi != null && v > hi) return res("fail", t("finder.e.size.max", { shown: shown, hi: hi }));
       return res("pass", shown);
     }
     if (id === "budget") {
       const tmax = num(r.total), pmax = num(r.pmax), out = [];
       let fail = false, unk = false;
       if (tmax != null) {
-        if (l.tot == null) { unk = true; out.push(l.ms ? "the total depends on which plot (several sizes)" : "no total price known"); }
-        else if (l.tot > tmax) { fail = true; out.push("Rs " + nf(l.tot) + " total (over Rs " + nf(tmax) + ")"); } else out.push("Rs " + nf(l.tot) + " total");
+        if (l.tot == null) { unk = true; out.push(l.ms ? t("finder.e.bud.tot.ms") : t("finder.e.bud.tot.none")); }
+        else if (l.tot > tmax) { fail = true; out.push(t("finder.e.bud.tot.over", { a: nf(l.tot), b: nf(tmax) })); } else out.push(t("finder.e.bud.tot.ok", { a: nf(l.tot) }));
       }
       if (pmax != null) {
-        if (l.p == null) { unk = true; out.push("no price per unit known (area unreadable)"); }
-        else { const p = l.p * T[r.punit]; if (p > pmax) { fail = true; out.push("Rs " + nf(p) + "/" + r.punit + " (over Rs " + nf(pmax) + ")"); } else out.push("Rs " + nf(p) + "/" + r.punit); }
+        if (l.p == null) { unk = true; out.push(t("finder.e.bud.p.none")); }
+        else { const p = l.p * T[r.punit]; if (p > pmax) { fail = true; out.push(t("finder.e.bud.p.over", { a: nf(p), u: funit(r.punit), b: nf(pmax) })); } else out.push(t("finder.e.bud.p.ok", { a: nf(p), u: funit(r.punit) })); }
       }
       return res(fail ? "fail" : unk ? "unknown" : "pass", out.join("; "));
     }
     if (id === "road") {
-      if (l.road == null) return res("unknown", "the ad states no road: not the same as no road");
-      return l.road >= +r.min ? res("pass", l.road + " ft road") : res("fail", l.road + " ft road (wanted at least " + r.min + ")");
+      if (l.road == null) return res("unknown", t("finder.e.road.none"));
+      return l.road >= +r.min ? res("pass", t("card.road", { n: l.road })) : res("fail", t("finder.e.road.fail", { n: l.road, m: r.min }));
     }
     if (id === "hills") {
-      const lo = num(r.min), hi = num(r.max), band = (lo != null ? lo : "") + (hi != null ? " to " + hi : "+");
+      const lo = num(r.min), hi = num(r.max), band = (lo != null ? Lib.digits(lo) : "") + (hi != null ? t("finder.band.to", { hi: hi }) : "+");
       const okAt = function (v) { return (lo == null || v >= lo) && (hi == null || v <= hi); };
-      if (l.el != null) return okAt(l.el) ? res("pass", "ground at ~" + nf(l.el) + " m") : res("fail", "ground at ~" + nf(l.el) + " m (wanted " + band + " m)");
+      if (l.el != null) return okAt(l.el) ? res("pass", t("finder.e.hills.at", { n: nf(l.el) })) : res("fail", t("finder.e.hills.atfail", { n: nf(l.el), band: band }));
       if (l.er) {
-        const a = okAt(l.er[0]), b = okAt(l.er[1]);
-        if (a && b) return res("pass", "the whole palika lies at " + nf(l.er[0]) + "-" + nf(l.er[1]) + " m");
-        if (!a && !b && ((lo != null && l.er[1] < lo) || (hi != null && l.er[0] > hi))) return res("fail", "the whole palika lies at " + nf(l.er[0]) + "-" + nf(l.er[1]) + " m (wanted " + band + " m)");
-        return res("unknown", "only the palika is known and it spans " + nf(l.er[0]) + "-" + nf(l.er[1]) + " m, so this plot could be either");
+        const a = okAt(l.er[0]), b = okAt(l.er[1]), span = { a: nf(l.er[0]), b: nf(l.er[1]) };
+        if (a && b) return res("pass", t("finder.e.hills.palika.ok", span));
+        if (!a && !b && ((lo != null && l.er[1] < lo) || (hi != null && l.er[0] > hi))) return res("fail", t("finder.e.hills.palika.fail", { a: span.a, b: span.b, band: band }));
+        return res("unknown", t("finder.e.hills.palika.unk", span));
       }
-      return res("unknown", "no terrain data for this position");
+      return res("unknown", t("finder.e.hills.none"));
     }
     if (id === "near") {
-      if (l.lat == null) return res("unknown", "the ad has no usable position");
+      if (l.lat == null) return res("unknown", t("finder.e.near.nopos"));
       const tol = TOL_KM[l.prec] != null ? TOL_KM[l.prec] : TOL_KM.palika;
       let best = null;
       r.places.forEach(function (p) { const d = hav(l.lat, l.lon, p.lat, p.lon), ok = d - p.km; if (best == null || ok < best.ok) best = { d: d, ok: ok, p: p }; });
-      const where = "~" + nf(best.d) + " km from " + best.p.n + (l.prec === "palika" ? " (only the palika centre is known: rough)" : "");
-      if (best.ok <= -tol) return res("pass", where + " (wanted within " + best.p.km + ")");
-      if (best.ok > tol) return res("fail", where + " (wanted within " + best.p.km + ")");
-      return res("unknown", where + ": too close to the " + best.p.km + " km limit for this position to say");
+      const where = t("finder.e.near.where", { d: nf(best.d), name: best.p.n, rough: l.prec === "palika" ? t("finder.e.near.rough") : "" });
+      if (best.ok <= -tol) return res("pass", t("finder.e.near.within", { where: where, km: best.p.km }));
+      if (best.ok > tol) return res("fail", t("finder.e.near.within", { where: where, km: best.p.km }));
+      return res("unknown", t("finder.e.near.unk", { where: where, km: best.p.km }));
     }
     if (id === "city") {
-      if (l.ck == null) return res("unknown", "no usable position to measure from");
-      return l.ck <= +r.km ? res("pass", "~" + nf(l.ck) + " km from the nearest city") : res("fail", "~" + nf(l.ck) + " km from the nearest city (wanted within " + r.km + ")");
+      if (l.ck == null) return res("unknown", t("finder.e.city.nopos"));
+      return l.ck <= +r.km ? res("pass", t("finder.e.city.ok", { n: nf(l.ck) })) : res("fail", t("finder.e.city.fail", { n: nf(l.ck), km: r.km }));
     }
     if (id === "fresh") {
-      if (l.po && (l.pk === "updated" || l.pk === "relisted")) return res("unknown", "the portal gives only a date the ad was " + l.pk + ", not when it was first posted");
+      if (l.po && (l.pk === "updated" || l.pk === "relisted")) return res("unknown", t("finder.e.fresh.kind", { kind: t("finder.kind." + l.pk) }));
       const n = daysSince(l.po, ctx.today);
-      if (n == null) return res("unknown", "the portal gives no posted date");
-      return n <= +r.days ? res("pass", "posted " + n + " days ago") : res("fail", "posted " + n + " days ago (wanted within " + r.days + ")");
+      if (n == null) return res("unknown", t("finder.e.fresh.nodate"));
+      return n <= +r.days ? res("pass", t("finder.e.fresh.ok", { n: n })) : res("fail", t("finder.e.fresh.fail", { n: n, d: r.days }));
     }
     if (id === "value") {
-      if (!l.c) return res("unknown", "not enough comparable ads to say where this ask sits");
-      if (l.c.rel === "weak") return res("unknown", "only a district-wide comparison exists (" + l.c.p + "th percentile of " + l.c.n + "), which is weak");
-      return l.c.p <= +r.pct ? res("pass", "asks at the " + l.c.p + "th percentile of " + l.c.n + " comparable ads") : res("fail", "asks at the " + l.c.p + "th percentile of " + l.c.n + " comparable ads (wanted at or below " + r.pct + ")");
+      if (!l.c) return res("unknown", t("finder.e.value.none"));
+      if (l.c.rel === "weak") return res("unknown", t("finder.e.value.weak", { p: l.c.p, n: l.c.n }));
+      return l.c.p <= +r.pct ? res("pass", t("finder.e.value.ok", { p: l.c.p, n: l.c.n })) : res("fail", t("finder.e.value.fail", { p: l.c.p, n: l.c.n, pct: r.pct }));
     }
-    if (id === "trust") return l.pc === "high" ? res("pass", "the price reading is high confidence") : l.pc === "low" ? res("fail", "the price reading is low confidence: see the X-Ray") : res("unknown", "the price reading is " + (l.pc || "not graded") + " confidence");
+    if (id === "trust") return l.pc === "high" ? res("pass", t("finder.e.trust.high")) : l.pc === "low" ? res("fail", t("finder.e.trust.low")) : res("unknown", t("finder.e.trust.other", { pc: l.pc ? (t("finder.pc." + l.pc) !== "finder.pc." + l.pc ? t("finder.pc." + l.pc) : l.pc) : t("finder.pc.none") }));
     return res("unknown", "");
   }
 
@@ -157,7 +163,7 @@
   function evaluate(l, profile, ctx) {
     return activeIds(profile, ctx.flags).map(function (id) {
       const r = profile.rows[id], j = judge(id, r, l, ctx);
-      const label = isFlag(id) ? "The ad mentions: " + ctx.flags[ctx.flags.map(function (f) { return f.k; }).indexOf(id.slice(5))].label : rowDef(id).label;
+      const label = isFlag(id) ? t("finder.flag.row", { w: flagLabel(ctx.flags[ctx.flags.map(function (f) { return f.k; }).indexOf(id.slice(5))]) }) : rowDef(id).label;
       return { id: id, label: label, must: !!r.must, s: j.s, e: j.e };
     });
   }
@@ -180,7 +186,7 @@
     items.forEach(function (it) { counts[it.tier]++; });
     const mustIds = ids.filter(function (id) { return profile.rows[id].must; });
     const status = function (it, id) { return (it.results.filter(function (x) { return x.id === id; })[0] || {}).s; };
-    const funnel = [{ id: "all", label: "Ads considered", left: items.length, unknown: 0 }];
+    const funnel = [{ id: "all", label: t("finder.funnel.all"), left: items.length, unknown: 0 }];
     let alive = items;
     mustIds.forEach(function (id) {
       const passing = alive.filter(function (it) { return status(it, id) === "pass"; });
@@ -201,15 +207,13 @@
   }
 
   // -- presets: generic starting points (nobody's personal profile) ----------------------------------------------------------------------
+  const preset = function (id, rows) { return { id: id, get label() { return t("finder.preset." + id + ".label"); }, get blurb() { return t("finder.preset." + id + ".blurb"); }, rows: rows }; };
   const PRESETS = [
-    { id: "hill", label: "Hill land to build or farm", blurb: "At least 1 ropani on hill ground with a road; wishes: a view, farming, water.",
-      rows: { size: { on: true, must: true, min: 1, max: "", unit: "ropani" }, road: { on: true, must: true, min: 10 }, hills: { on: true, must: true, min: 700, max: "" },
-              flag_view: { on: true, must: false }, flag_farm: { on: true, must: false }, flag_water: { on: true, must: false } } },
-    { id: "house", label: "A house plot near a city", blurb: "3 to 10 aana on a 13 ft road within 15 km of a city; wishes: level ground, paved road.",
-      rows: { size: { on: true, must: true, min: 3, max: 10, unit: "aana" }, road: { on: true, must: true, min: 13 }, city: { on: true, must: true, km: 15 },
-              flag_flat: { on: true, must: false }, flag_paved: { on: true, must: false } } },
-    { id: "value", label: "Priced low for its area", blurb: "Asks in the cheapest quarter of comparable ads, with a price reading you can trust.",
-      rows: { value: { on: true, must: true, pct: 25 }, trust: { on: true, must: true }, fresh: { on: true, must: false, days: 180 } } }
+    preset("hill", { size: { on: true, must: true, min: 1, max: "", unit: "ropani" }, road: { on: true, must: true, min: 10 }, hills: { on: true, must: true, min: 700, max: "" },
+                     flag_view: { on: true, must: false }, flag_farm: { on: true, must: false }, flag_water: { on: true, must: false } }),
+    preset("house", { size: { on: true, must: true, min: 3, max: 10, unit: "aana" }, road: { on: true, must: true, min: 13 }, city: { on: true, must: true, km: 15 },
+                      flag_flat: { on: true, must: false }, flag_paved: { on: true, must: false } }),
+    preset("value", { value: { on: true, must: true, pct: 25 }, trust: { on: true, must: true }, fresh: { on: true, must: false, days: 180 } })
   ];
   function applyPreset(id, flags) {
     const p = ensureRows(defaultProfile(), flags), pre = PRESETS.filter(function (x) { return x.id === id; })[0];
@@ -252,5 +256,5 @@
     return p;
   }
 
-  return { ROWS: ROWS, PRESETS: PRESETS, TIER: TIER, MAX_PLACES: MAX_PLACES, defaultProfile, ensureRows, complete, activeIds, judge, evaluate, tierOf, run, byFit, applyPreset, encode, decode, hav };
+  return { ROWS: ROWS, PRESETS: PRESETS, TIER: TIER, flagLabel: flagLabel, funit: funit, MAX_PLACES: MAX_PLACES, defaultProfile, ensureRows, complete, activeIds, judge, evaluate, tierOf, run, byFit, applyPreset, encode, decode, hav };
 });

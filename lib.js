@@ -9,6 +9,58 @@
 
   const SQFT = 0.09290304;
 
+  // -- language ---------------------------------------------------------------------------------------------------------------
+  // Every sentence the app writes is a key in a catalog (src/jagga/i18n/{en,ne}.json): the page gets them from messages.js (built from those files), Node loads the files themselves,
+  // so the tests run against what ships. A key missing in Nepali falls back to English, and a key missing everywhere shows the key: never a blank.
+  var CAT = null, LANG = "en", DEVA = false;
+  const DEV_DIGITS = "०१२३४५६७८९";
+  function catalogs() {
+    if (CAT) return CAT;
+    if (typeof module === "object" && module.exports && typeof require === "function") CAT = { en: require("../i18n/en.json"), ne: require("../i18n/ne.json") };
+    else if (typeof self !== "undefined" && self.JAGGA_MSG) CAT = self.JAGGA_MSG;
+    else CAT = { en: {}, ne: {} };
+    return CAT;
+  }
+  /** lang: "en" | "ne"; digits: "deva" shows ०-९ (Nepali mode only), anything else Western 0-9. An unknown language is English. */
+  function setLang(lang, digits) { LANG = catalogs()[lang] ? lang : "en"; DEVA = LANG === "ne" && digits === "deva"; }
+  function getLang() { return LANG; }
+  /** Digits as the visitor chose. Only text the app wrote goes through here: a seller's own words keep their own digits. */
+  function digits(s) { return DEVA ? String(s).replace(/[0-9]/g, function (d) { return DEV_DIGITS.charAt(+d); }) : String(s); }
+  /** A number with thousands separators, in the chosen digits. */
+  function nfmt(n) { return digits(Number(n).toLocaleString("en-US")); }
+  /** Typed numbers: Devanagari digits from a Nepali keyboard become ASCII before anything parses them. */
+  function toAscii(s) { return String(s == null ? "" : s).replace(/[०-९]/g, function (d) { return DEV_DIGITS.indexOf(d); }); }
+  /** The sentence for `key` with {name} filled from `p`. A number parameter is shown in the chosen digits; a string parameter is inserted as given (format it first with nfmt/digits if it is a number). */
+  function t(key, p) {
+    var c = catalogs(), tpl = c[LANG] && c[LANG][key];
+    if (tpl == null) tpl = c.en && c.en[key];
+    if (tpl == null) return key;
+    return digitsOutside(tpl).replace(/\{(\w+)\}/g, function (m, k) { return p && k in p ? param(p[k]) : m; });
+  }
+  /** The template's own digits in the chosen style, but never inside a {placeholder} (a name like {p25} must still be found afterwards). */
+  function digitsOutside(tpl) { return DEVA ? tpl.replace(/\{\w+\}|[0-9]/g, function (m) { return m.length > 1 ? m : DEV_DIGITS.charAt(+m); }) : tpl; }
+  /** A parameter as text: a number is shown in the chosen digits, a plain string as given; the server's two wire forms are {d: "75,160"} (a number it already formatted: digits only) and
+   *  {k, p} (a sentence of its own, rendered the same way, so sentences nest), and {j: [...], s: ", "} (parts joined by a separator). */
+  function param(v) {
+    if (typeof v === "number") return digits(v);
+    if (v && typeof v === "object") return v.d != null ? digits(v.d) : v.k ? t(v.k, v.p) : v.j ? v.j.map(param).join(v.s != null ? v.s : ", ") : String(v);
+    return String(v);
+  }
+  /** An X-Ray factor's name in the chosen language (the data carries the English name: the key JS and the server look it up by). */
+  function factor(name) { var k = "factor." + String(name).replace(/[^a-z0-9]+/g, "_"); return t(k) !== k ? t(k) : name; }
+  /** The size range an ad gives ('4 to 6 aana', 'from 3 aana', 'flexible sizes') in the chosen language; anything else as written. English is what the data says. */
+  function msText(ms) {
+    if (LANG === "en" || !ms) return ms == null ? "" : String(ms);
+    var m, num = function (x) { return { d: x }; }, unit = function (u) { var k = "finder.unit." + u; return t(k) !== k ? t(k) : u; };
+    if (ms === "flexible sizes") return t("ms.flex");
+    if (ms === "plots of different sizes") return t("area.diff");
+    if ((m = /^from ([\d.,]+) (\w+)$/.exec(ms))) return t("ms.from", { n: num(m[1]), unit: unit(m[2]) });
+    if ((m = /^([\d.,]+) to ([\d.,]+) (\w+)$/.exec(ms))) return t("ms.range", { a: num(m[1]), b: num(m[2]), unit: unit(m[3]) });
+    return String(ms);
+  }
+  /** Text the server wrote: a plain string (free text from the ad, shown as it is) or a sentence in the wire form {k, p}. */
+  function msg(v) { return v && typeof v === "object" && v.k ? t(v.k, v.p) : v == null ? "" : String(v); }
+
   /** Square metres per unit. `units` is meta.units from data.js (ropani, aana, paisa, daam, bigha, kattha, dhur). */
   function unitTable(units) {
     return Object.assign({}, units, { sqft: SQFT, sqm: 1 });
@@ -32,9 +84,9 @@
   function fmtMoney(n) {
     if (n == null || !isFinite(n)) return "-";
     const a = Math.abs(n);
-    if (a >= 1e7) return "Rs " + trim2(n / 1e7) + " crore";
-    if (a >= 1e5) return "Rs " + trim2(n / 1e5) + " lakh";
-    return "Rs " + Math.round(n).toLocaleString("en-US");   // below a lakh people say "Rs 45,000", not "45 thousand"
+    if (a >= 1e7) return t("money.crore", { n: +trim2(n / 1e7) });
+    if (a >= 1e5) return t("money.lakh", { n: +trim2(n / 1e5) });
+    return t("money.plain", { n: nfmt(Math.round(n)) });      // below a lakh people say "Rs 45,000", not "45 thousand"
   }
 
   /** Same quantisation as units.Area.as_hill/as_terai: round to whole daam/dhur first, then divmod. */
@@ -61,7 +113,7 @@
     if (sqm == null) return "";
     const names = system === "terai" ? ["bigha", "kattha", "dhur"] : ["ropani", "aana", "paisa", "daam"];
     const parts = areaNotation(sqm, system, units).split("-").map(Number);
-    return parts.map(function (n, i) { return n ? n + " " + names[i] : ""; }).filter(Boolean).join(" ");
+    return parts.map(function (n, i) { return n ? digits(n) + " " + t("unit." + names[i]) : ""; }).filter(Boolean).join(" ");
   }
 
   /** Sellers often type titles in capitals ('LAND ON SALE AT CHAPAGAUN'): shown in plain title case. Mixed-case titles are left as written. */
@@ -75,36 +127,35 @@
   /** "today", "yesterday", "5 days ago", "3 weeks ago", "4 months ago", "2.8 years ago". */
   function relTime(days) {
     if (days == null) return "";
-    if (days === 0) return "today";
-    if (days === 1) return "yesterday";
-    if (days < 14) return days + " days ago";
-    if (days < 60) return Math.floor(days / 7) + " weeks ago";
-    if (days < 365) return Math.floor(days / 30) + " months ago";
-    return (Math.round(days / 36.5) / 10) + " years ago";
+    if (days === 0) return t("time.today");
+    if (days === 1) return t("time.yesterday");
+    if (days < 14) return t("time.days", { n: days });
+    if (days < 60) return t("time.weeks", { n: Math.floor(days / 7) });
+    if (days < 365) return t("time.months", { n: Math.floor(days / 30) });
+    return t("time.years", { n: Math.round(days / 36.5) / 10 });
   }
 
   /** When the PORTAL says the ad was put up, in words: 'posted 6 days ago', 'updated 3 months ago', 're-listed ...', or that no date is stated. */
   function whenText(l, today) {
-    if (!l.po) return "date not stated";
-    const verb = l.pk === "updated" ? "updated" : l.pk === "relisted" ? "re-listed" : l.pk === "posted" ? "posted" : "dated";
-    return verb + " " + relTime(daysSince(l.po, today));
+    if (!l.po) return t("when.none");
+    return t("when." + (l.pk === "updated" || l.pk === "relisted" || l.pk === "posted" ? l.pk : "dated"), { ago: relTime(daysSince(l.po, today)) });
   }
 
   /** How old the data is, from when each crawled portal last answered (meta.refresh: [{source, last_ok: "YYYY-MM-DD HH:MM", UTC}]).
    *  -> {text, stale, detail}: 'Data refreshed 5 hours ago'; stale (over 3 days) says what that means. null when nothing was ever crawled. */
   function freshness(refresh, now) {
-    const t = (now instanceof Date ? now : new Date()).getTime();
+    const at = (now instanceof Date ? now : new Date()).getTime();
     const rows = (refresh || []).filter(function (r) { return r.last_ok; }).map(function (r) {
-      return { source: r.source, hours: Math.max(0, (t - Date.parse(r.last_ok.replace(" ", "T") + ":00Z")) / 36e5) };
+      return { source: r.source, hours: Math.max(0, (at - Date.parse(r.last_ok.replace(" ", "T") + ":00Z")) / 36e5) };
     });
     if (!rows.length) return null;
-    const say = function (h) { return h < 1 ? "less than an hour ago" : h < 24 ? Math.floor(h) + (Math.floor(h) === 1 ? " hour" : " hours") + " ago" : relTime(Math.floor(h / 24)); };
+    const say = function (h) { return h < 1 ? t("fresh.lt1h") : h < 24 ? t(Math.floor(h) === 1 ? "fresh.h1" : "fresh.hn", { n: Math.floor(h) }) : relTime(Math.floor(h / 24)); };
     const newest = Math.min.apply(null, rows.map(function (r) { return r.hours; }));
     const old = rows.filter(function (r) { return r.hours > 72; });
-    const detail = rows.map(function (r) { return r.source + " " + say(r.hours); }).join(", ");
-    if (newest > 72) return { stale: true, text: "Data last refreshed " + say(newest) + ". Ads posted, removed or re-priced since then are missing.", detail: detail };
-    if (old.length) return { stale: true, text: "Data refreshed " + say(newest) + ", but " + old.map(function (r) { return r.source + " was last checked " + say(r.hours); }).join(", ") + ".", detail: detail };
-    return { stale: false, text: "Data refreshed " + say(newest), detail: detail };
+    const detail = rows.map(function (r) { return t("fresh.detail", { source: r.source, say: say(r.hours) }); }).join(", ");
+    if (newest > 72) return { stale: true, text: t("fresh.stale", { say: say(newest) }), detail: detail };
+    if (old.length) return { stale: true, text: t("fresh.partial", { say: say(newest), list: old.map(function (r) { return t("fresh.src", { source: r.source, say: say(r.hours) }); }).join(", ") }), detail: detail };
+    return { stale: false, text: t("fresh.ok", { say: say(newest) }), detail: detail };
   }
 
   /** The About page's accuracy numbers, from meta.accuracy (counts of values that were read from the ad's own words by an AI reader and did or did not match).
@@ -114,7 +165,7 @@
     const cell = function (a) { return { text: a[0] + "/" + a[1], miss: a[0] < a[1] }; };
     return {
       rows: acc.sources.map(function (s) { return { source: s.source, n: s.n, cells: [cell(s.area), cell(s.price), cell(s.total), cell(s.district)] }; }),
-      line: acc.right + " of the " + acc.checked + " values checked matched the ad (" + (100 * acc.right / acc.checked).toFixed(1) + "%)",
+      line: t("acc.line", { right: nfmt(acc.right), checked: nfmt(acc.checked), pct: digits((100 * acc.right / acc.checked).toFixed(1)) }),
     };
   }
 
@@ -126,15 +177,15 @@
     const cell = function (st) {
       if (!st) return null;
       const thin = st.n < g.min_asks;
-      return { n: st.n, thin: thin, med: st.med, text: per(st.med), range: thin ? "" : per(st.p25) + " to " + per(st.p75) };
+      return { n: st.n, thin: thin, med: st.med, text: per(st.med), range: thin ? "" : t("guide.range", { a: per(st.p25), b: per(st.p75) }) };
     };
     const rows = g.rows.map(function (r) {
       const gv = r.govt;
       return {
         id: r.id, name: r.name, level: r.level, district: r.district,
-        label: r.level === "district" ? r.name + " district (all of it)" : r.name + (r.kind ? " (" + String(r.kind).replace(/_/g, " ") + ")" : "") + (r.district ? ", " + r.district : ""),
+        label: r.level === "district" ? t("guide.district", { name: r.name }) : r.name + (r.kind ? " (" + (t("kind." + String(r.kind).replace(/-/g, "_")) !== "kind." + String(r.kind).replace(/-/g, "_") ? t("kind." + String(r.kind).replace(/-/g, "_")) : String(r.kind).replace(/_/g, " ")) + ")" : "") + (r.district ? ", " + r.district : ""),
         recent: cell(r.stats.recent[o.size]), any: cell(r.stats.any[o.size]),
-        govt: gv ? { text: per(gv.lo) + (gv.hi > gv.lo ? " to " + per(gv.hi) : ""), fy: gv.fy, n: gv.n, source: gv.source, url: gv.url } : null
+        govt: gv ? { text: gv.hi > gv.lo ? t("guide.range", { a: per(gv.lo), b: per(gv.hi) }) : per(gv.lo), fy: gv.fy, n: gv.n, source: gv.source, url: gv.url } : null
       };
     }).filter(function (r) { return r.recent || r.any || r.govt; })
       .filter(function (r) { return !q || (r.label + " " + (r.district || "")).toLowerCase().includes(q); });
@@ -148,10 +199,12 @@
   /** A price against its comparables, in plain words for a card. c: {p: percentile (low = cheap), n, rel}. */
   function compsPlain(c) {
     if (!c) return null;
-    return c.p < 25 ? "cheaper than most similar ads" : c.p > 75 ? "dearer than most similar ads" : "mid-priced for its area";
+    return t(c.p < 25 ? "comps.cheap" : c.p > 75 ? "comps.dear" : "comps.mid");
   }
 
-  var FLAG_WORDS = { view: "a view", farm: "farming", water: "water", stay: "tourism use", paved: "a paved road", flat: "level ground", quiet: "a quiet setting" };
+  var FLAG_KEYS = ["view", "farm", "water", "stay", "paved", "flat", "quiet"];
+  /** A wish's long words in the chosen language. English is what the data says (the server owns it); another language uses the catalog, and the data's own label when the catalog has no entry. */
+  function flagLabel(f) { if (LANG === "en") return f.label; var k = "flag.label." + f.k; return t(k) !== k ? t(k) : f.label; }
 
   /** "At a glance": 4-8 plain sentences built ONLY from what is already known about the ad (nothing is estimated here).
    *  o: {today, unit (price unit key), T (unit table), units (area units), flags: meta.flags}. */
@@ -165,26 +218,24 @@
   }
   function glance(l, o) {
     const out = [], T = o.T, per = function (u) { return fmtMoney(perUnit(l.p, u, T)); };
-    if (l.ms) out.push("This ad covers " + (l.ms === "plots of different sizes" ? "plots of different sizes" : "several sizes (" + l.ms + ")") + ", so there is no single area or total. Ask which plot is meant.");
-    if (l.p != null) out.push("Asking " + per(o.unit) + " per " + (o.unit === "sqft" ? "sq ft" : o.unit === "sqm" ? "m²" : o.unit) + (l.tot ? ", " + fmtMoney(l.tot) + " for the whole plot" : "") + ".");
-    else if (l.tot) out.push("Asking " + fmtMoney(l.tot) + " for the whole plot. The area could not be read, so there is no price per aana to compare.");
-    else if (l.ms && l.msTot) out.push("The ad states " + fmtMoney(l.msTot) + ", but not for which size, so there is no price per aana to compare.");
+    if (l.ms) out.push(l.ms === "plots of different sizes" ? t("glance.ms.diff") : t("glance.ms.several", { ms: msText(l.ms) }));
+    if (l.p != null) out.push(l.tot ? t("glance.ask.tot", { price: per(o.unit), unit: t("unit." + o.unit), tot: fmtMoney(l.tot) }) : t("glance.ask", { price: per(o.unit), unit: t("unit." + o.unit) }));
+    else if (l.tot) out.push(t("glance.tot.noarea", { tot: fmtMoney(l.tot) }));
+    else if (l.ms && l.msTot) out.push(t("glance.ms.tot", { tot: fmtMoney(l.msTot) }));
     if (l.p != null) {
-      if (l.c && l.c.rel !== "weak") out.push("Cheaper than about " + (100 - l.c.p) + "% of the " + l.c.n + " similar ads nearby (same area, land type and road).");
-      else if (l.c) out.push("Only compared with the whole district, which is a weak comparison: locations differ a lot.");
-      else out.push("Not enough similar ads nearby to say whether this price is high or low.");
+      if (l.c && l.c.rel !== "weak") out.push(t("glance.comps", { pct: 100 - l.c.p, n: l.c.n }));
+      else if (l.c) out.push(t("glance.comps.weak"));
+      else out.push(t("glance.comps.none"));
     }
-    out.push(l.road ? "Road: " + l.road + " ft wide, as the ad states." : "The ad does not state the road width: ask.");
-    if (!l.po) out.push("The portal gives no posting date: ask how long it has been for sale.");
-    else out.push("The portal says it was " + whenText(l, o.today) + (l.pk === "updated" || l.pk === "relisted" ? "; when it was first posted is not stated" : "") +
-      (daysSince(l.po, o.today) > 180 ? ". It is still listed, but confirm it is still for sale" : "") + ".");
-    out.push(l.prec === "exact" ? "The map pin comes from the ad itself." : l.prec === "locality" ? "Location is approximate (the village or area, not the plot): do not trust distances." :
-      l.prec === "palika" ? "Only the municipality is known: the pin is at its centre, not at the plot." : "The ad gives no usable location.");
-    if (l.el != null) out.push("About " + l.el.toLocaleString("en-US") + " m above sea level (terrain model, about 150 m resolution).");
-    else if (l.er) out.push("The municipality spans about " + l.er[0].toLocaleString("en-US") + " to " + l.er[1].toLocaleString("en-US") + " m above sea level; the plot's own height is not known.");
-    const names = (o.flags || []).map(function (f, i) { return (l.tf || 0) >> i & 1 ? FLAG_WORDS[f.k] || f.label : null; }).filter(Boolean);
-    if (names.length) out.push("The ad mentions: " + names.join(", ") + ". That is what the seller wrote, not something we measured.");
-    if (l.tw) out.push("Probably listed " + (l.tw + 1) + " times (same district, area, price and place). It counts once in comparisons.");
+    out.push(l.road ? t("glance.road", { n: l.road }) : t("glance.road.none"));
+    if (!l.po) out.push(t("glance.date.none"));
+    else out.push(t("glance.date", { when: whenText(l, o.today), a: l.pk === "updated" || l.pk === "relisted" ? t("glance.date.a") : "", b: daysSince(l.po, o.today) > 180 ? t("glance.date.b") : "" }));
+    out.push(t(l.prec === "exact" || l.prec === "locality" || l.prec === "palika" ? "glance.pin." + l.prec : "glance.pin.none"));
+    if (l.el != null) out.push(t("glance.el", { n: nfmt(l.el) }));
+    else if (l.er) out.push(t("glance.er", { lo: nfmt(l.er[0]), hi: nfmt(l.er[1]) }));
+    const names = (o.flags || []).map(function (f, i) { return (l.tf || 0) >> i & 1 ? (FLAG_KEYS.indexOf(f.k) >= 0 ? t("flag." + f.k) : f.label) : null; }).filter(Boolean);
+    if (names.length) out.push(t("glance.flags", { list: names.join(", ") }));
+    if (l.tw) out.push(t("glance.twin", { n: l.tw + 1 }));
     return out;
   }
 
@@ -211,8 +262,7 @@
   /** Short, honest label for the comps position. Weak comparisons are marked as such. */
   function compsLabel(c) {
     if (!c) return null;
-    const side = c.p < 25 ? "cheap vs comps" : c.p > 75 ? "dear vs comps" : "mid vs comps";
-    return side + " (" + c.p + "th pct, " + c.n + (c.rel === "weak" ? ", weak" : "") + ")";
+    return t("comps.label", { side: t(c.p < 25 ? "comps.label.cheap" : c.p > 75 ? "comps.label.dear" : "comps.label.mid"), p: c.p, n: c.n, weak: c.rel === "weak" ? t("comps.label.weak") : "" });
   }
 
   /** f: {q, dis, src, cls, unit, pmin, pmax, aunit, amin, amax, road, age, fresh, cut, bounds:[s,w,n,e]} */
@@ -328,13 +378,49 @@
       })
     };
   }
-  function xmlEsc(s) { return String(s == null ? "" : s).replace(/[<>&"']/g, function (c) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" }[c]; }); }
-  function toKML(listings) {
-    const pm = listings.filter(function (l) { return l.lat != null; }).map(function (l) {
-      return "<Placemark><name>" + xmlEsc(l.t) + "</name><description>" + xmlEsc((l.dis || "") + " | " + fmtMoney(l.tot) + " | " + (l.url || "")) +
-        "</description><Point><coordinates>" + l.lon + "," + l.lat + ",0</coordinates></Point></Placemark>";
-    });
-    return '<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document>' + pm.join("") + "</Document></kml>";
+  var XML_BAD = /[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g;       // not allowed in XML 1.0: one stray control character in a scraped title would make Earth refuse the whole file
+  function xmlEsc(s) { return String(s == null ? "" : s).replace(XML_BAD, "").replace(/[<>&"']/g, function (c) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" }[c]; }); }
+
+  // -- Google Earth ----------------------------------------------------------------------------------------------------------
+  /** A usable point: both numbers, on the globe. The data holds 8 to 15 decimals; 5 (about a metre) is all anyone can use. */
+  function hasPoint(l) { return !!l && typeof l.lat === "number" && typeof l.lon === "number" && isFinite(l.lat) && isFinite(l.lon) && Math.abs(l.lat) <= 90 && Math.abs(l.lon) <= 180; }
+  /** Camera distance in metres. The vaguer the pin, the wider the view, so a municipality centre never looks like 'the plot is here'. */
+  var EARTH_RANGE = { exact: 1500, locality: 5000, palika: 15000 };
+  /** Google documents no link format for opening Earth at a point. This is the one its own share links use (@lat,lon, ground height a, camera distance d, field of view y,
+   *  heading h, tilt t, roll r). It can change without notice: the KML file is the dependable route. */
+  function earthUrl(l) {
+    if (!hasPoint(l)) return null;
+    var ground = typeof l.el === "number" && isFinite(l.el) ? Math.round(l.el) : 0;
+    return "https://earth.google.com/web/@" + (+l.lat.toFixed(5)) + "," + (+l.lon.toFixed(5)) + "," + ground + "a," + (EARTH_RANGE[l.prec] || EARTH_RANGE.palika) + "d,35y,0h,0t,0r";
+  }
+  /** What the pin means. A pin is evidence, not truth: even an 'exact' one is the portal's or the seller's claim. */
+  function earthNote(l) {
+    return l.prec === "exact" || l.prec === "locality" || l.prec === "palika" ? t("earth.note." + l.prec) : "";
+  }
+  /** 'lat, lon' as Earth's and Google Maps' search boxes take it. */
+  function coordsText(l) { return hasPoint(l) ? (+l.lat.toFixed(5)) + ", " + (+l.lon.toFixed(5)) : ""; }
+
+  var KML_PIN = { exact: "red-circle", locality: "ylw-circle", palika: "wht-circle" };      // Google's own paddle icons: red = from the ad, yellow = area, white = municipality centre
+  /** One placemark. o.describe(l) -> plain lines (the app passes what the screen shows); o.lookAt adds a camera, for a file of a single plot. */
+  function kmlPlacemark(l, o) {
+    var lines = (o.describe ? o.describe(l) : [l.dis, l.tot ? fmtMoney(l.tot) : ""]).filter(Boolean), note = earthNote(l), url = safeUrl(l.url);
+    var html = "<p><b>" + esc(niceTitle(l.t)) + "</b></p>" + lines.map(function (x) { return "<p>" + esc(x) + "</p>"; }).join("") +
+      (note ? "<p><i>" + esc(note) + "</i></p>" : "") + (url !== "#" ? '<p><a href="' + esc(url) + '">' + esc(t("earth.kml.ad")) + "</a></p>" : "");
+    var lon = +l.lon.toFixed(6), lat = +l.lat.toFixed(6), pin = KML_PIN[l.prec] ? l.prec : "palika";
+    return "<Placemark><name>" + xmlEsc(niceTitle(l.t)) + "</name><description><![CDATA[" + html.replace(XML_BAD, "").replace(/\]\]>/g, "]]]]><![CDATA[>") + "]]></description>" +
+      (o.lookAt ? "<LookAt><longitude>" + lon + "</longitude><latitude>" + lat + "</latitude><altitude>0</altitude><heading>0</heading><tilt>0</tilt><range>" +
+        (EARTH_RANGE[l.prec] || EARTH_RANGE.palika) + "</range><altitudeMode>relativeToGround</altitudeMode></LookAt>" : "") +
+      "<styleUrl>#" + pin + "</styleUrl><ExtendedData><Data name=\"precision\"><value>" + xmlEsc(l.prec || "none") + "</value></Data></ExtendedData>" +
+      "<Point><coordinates>" + lon + "," + lat + ",0</coordinates></Point></Placemark>";
+  }
+  /** Google Earth file. Listings without a point are left out. o: {name, describe, lookAt}. */
+  function toKML(listings, o) {
+    o = o || {};
+    var styles = Object.keys(KML_PIN).map(function (k) {
+      return '<Style id="' + k + '"><IconStyle><scale>1.1</scale><Icon><href>https://maps.google.com/mapfiles/kml/paddle/' + KML_PIN[k] + ".png</href></Icon></IconStyle></Style>";
+    }).join("");
+    return '<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>' + xmlEsc(o.name || t("earth.doc.default")) + "</name>" + styles +
+      listings.filter(hasPoint).map(function (l) { return kmlPlacemark(l, o); }).join("") + "</Document></kml>";
   }
 
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
@@ -343,10 +429,10 @@
   function safeUrl(u) { return /^https?:\/\//i.test(u || "") ? u : "#"; }
 
   // -- 'before you pay' list (verify.py builds the items; this only renders them) ----------------------------------------------
-  var WHO = { seller: "seller", office: "land office", site: "on site", you: "you" };
+  var WHO = { seller: "who.seller", office: "who.office", site: "who.site", you: "who.you" };
   function askHTML(ask, cls) {
     return (ask || []).map(function (a) {
-      return '<li><span class="who">' + esc(WHO[a.o] || a.o) + "</span> " + esc(a.a) + ' <span class="' + (cls || "why") + '">Because: ' + esc(a.w) + "</span></li>";
+      return '<li><span class="who">' + esc(WHO[a.o] ? t(WHO[a.o]) : a.o) + "</span> " + esc(msg(a.a)) + ' <span class="' + (cls || "why") + '">' + esc(t("ask.because")) + " " + esc(msg(a.w)) + "</span></li>";
     }).join("");
   }
   // -- the visitor's own work (saved plots, notes, saved searches, finder criteria): a backup file, parsed as untrusted input ------------------
@@ -362,8 +448,8 @@
   /** -> {ok: true, watch, notes, snaps, searches, profile, dropped} or {ok: false, error}. Reads the old export too ({watch, notes}). Anything malformed is dropped and counted, never stored. */
   function parseBackup(text) {
     var j, out = { ok: true, watch: {}, notes: {}, snaps: {}, searches: {}, profile: "", dropped: 0 };
-    try { j = JSON.parse(text); } catch (e) { return { ok: false, error: "That file is not a backup: it is not JSON." }; }
-    if (!j || typeof j !== "object" || Array.isArray(j) || !(j.watch || j.notes || j.searches || j.profile)) return { ok: false, error: "That file is not a Jaggasignal backup." };
+    try { j = JSON.parse(text); } catch (e) { return { ok: false, error: t("backup.err.json") }; }
+    if (!j || typeof j !== "object" || Array.isArray(j) || !(j.watch || j.notes || j.searches || j.profile)) return { ok: false, error: t("backup.err.app") };
     var each = function (o, max, fn) {
       if (!o || typeof o !== "object" || Array.isArray(o)) return;
       Object.keys(o).slice(0, max).forEach(function (k) { if (!fn(k, o[k])) out.dropped++; });
@@ -379,5 +465,5 @@
     return out;
   }
 
-  return { askHTML, histogram, unitTable, perUnit, toPps, fmtMoney, areaNotation, areaPlain, niceTitle, relTime, whenText, compsPlain, glance, freshness, accuracyView, guideRows, daysSince, isNewAd, postedSince, isCut, compsLabel, filter, sort, toHash, parseHash, toCSV, toGeoJSON, toKML, esc, safeUrl, snapOf, makeBackup, parseBackup, multiSize };
+  return { t, msg, factor, msText, setLang, getLang, flagLabel, digits, nfmt, toAscii, catalogs, askHTML, histogram, unitTable, perUnit, toPps, fmtMoney, areaNotation, areaPlain, niceTitle, relTime, whenText, compsPlain, glance, freshness, accuracyView, guideRows, daysSince, isNewAd, postedSince, isCut, compsLabel, filter, sort, toHash, parseHash, toCSV, toGeoJSON, toKML, hasPoint, earthUrl, earthNote, coordsText, esc, safeUrl, snapOf, makeBackup, parseBackup, multiSize };
 });

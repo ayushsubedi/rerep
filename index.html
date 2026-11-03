@@ -18,131 +18,133 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<a class="skip" href="#results">Skip to results</a>
+<a class="skip" href="#results" data-i18n="ui.skip">Skip to results</a>
 <header class="top" role="banner">
   <div class="top-row">
-    <a class="brand" id="brand" href="./" aria-label="Jaggasignal home: back to all ads, filters cleared" title="Home: all ads, filters cleared"><svg class="brand-glyph" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 22.5c-.2-7.6 5.6-14 12.8-14.4 7.3-.4 12.4 4.9 12.2 11.4-.1 3.2-2.7 5-6.1 5H9.6c-3.4 0-6-.8-6.1-2z"/><path d="M8.3 21.6c-.1-5.1 3.9-9.3 8.4-9.5 4.6-.2 7.6 3.1 7.5 7 0 1.8-1.5 2.9-3.7 2.9h-8.7c-2 0-3.5-.2-3.5-.4z"/><path d="M13 20.6c0-2.3 1.8-4 3.8-4 2.1 0 3.4 1.5 3.3 3.2 0 .6-.5.9-1.2.9h-4.7c-.8 0-1.2-.1-1.2-.1z" fill="currentColor"/></svg><span class="brand-mark">Jagga</span><span class="brand-sub">signal</span></a>
+    <a class="brand" id="brand" href="./" aria-label="Jaggasignal home: back to all ads, filters cleared" title="Home: all ads, filters cleared" data-i18n-attr="aria-label:ui.brand.label;title:ui.brand.title"><svg class="brand-glyph" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 22.5c-.2-7.6 5.6-14 12.8-14.4 7.3-.4 12.4 4.9 12.2 11.4-.1 3.2-2.7 5-6.1 5H9.6c-3.4 0-6-.8-6.1-2z"/><path d="M8.3 21.6c-.1-5.1 3.9-9.3 8.4-9.5 4.6-.2 7.6 3.1 7.5 7 0 1.8-1.5 2.9-3.7 2.9h-8.7c-2 0-3.5-.2-3.5-.4z"/><path d="M13 20.6c0-2.3 1.8-4 3.8-4 2.1 0 3.4 1.5 3.3 3.2 0 .6-.5.9-1.2.9h-4.7c-.8 0-1.2-.1-1.2-.1z" fill="currentColor"/></svg><span class="brand-mark">Jagga</span><span class="brand-sub">signal</span></a>
     <form class="search" role="search" id="searchForm" autocomplete="off">
-      <label class="sr" for="q">Search by place or keyword</label>
+      <label class="sr" for="q" data-i18n="ui.search.label">Search by place or keyword</label>
       <span class="prompt" aria-hidden="true">&gt;</span>
-      <input id="q" type="search" placeholder="Search a place…" spellcheck="false">
+      <input id="q" type="search" placeholder="Search a place…" spellcheck="false" data-i18n-attr="placeholder:ui.search.ph">
     </form>
-    <button class="btn btn-ghost only-narrow" id="btnFilters" type="button" aria-expanded="false" aria-controls="filtersBar"><span>Filters <b id="filterCount"></b></span></button>
+    <button class="btn btn-ghost only-narrow" id="btnFilters" type="button" aria-expanded="false" aria-controls="filtersBar"><span data-i18n="ui.filters">Filters <b id="filterCount"></b></span></button>
     <nav class="top-actions" aria-label="Site">
-      <button class="btn btn-outline" id="btnPicks" type="button" title="The plots that fit what you asked for, in plain words"><span>Shortlist</span></button>
-      <button class="btn btn-primary" id="btnFinder" type="button" aria-expanded="false" aria-controls="finder" title="Say what you want (any districts, size, budget, terrain, places to be near, wishes) and see which ads fit, and why none do"><span>My finder <b id="finderCount"></b></span></button>
-      <button class="btn btn-ghost" id="btnCompare" type="button" aria-label="Compare selected listings"><span>Compare <b id="cmpCount">0</b></span></button>
-      <button class="btn btn-ghost" id="btnWatch" type="button"><span>Saved <b id="watchCount">0</b></span></button>
-      <button class="btn btn-ghost" id="btnCoverage" type="button"><span>Coverage</span></button>
-      <button class="btn btn-ghost" id="btnAbout" type="button"><span>About</span></button>
-      <button class="btn btn-ghost only-narrow" id="btnMenu" type="button" aria-label="Menu: saved plots, compare, coverage, about" aria-haspopup="dialog"><span>•••</span></button>
-      <a class="btn btn-ghost" id="btnLang" href="#" hidden lang="ne" title="Opens this page through Google Translate. Google sees what you view there, and your watchlist and notes (stored per site address) are not carried across."><span>नेपाली</span></a>
+      <button class="btn btn-outline" id="btnPicks" type="button" title="The plots that fit what you asked for, in plain words" data-i18n-attr="title:ui.shortlist.title"><span data-i18n="ui.shortlist">Shortlist</span></button>
+      <button class="btn btn-primary" id="btnFinder" type="button" aria-expanded="false" aria-controls="finder" title="Say what you want (any districts, size, budget, terrain, places to be near, wishes) and see which ads fit, and why none do" data-i18n-attr="title:ui.finder.title"><span data-i18n="ui.finder">My finder <b id="finderCount"></b></span></button>
+      <button class="btn btn-ghost" id="btnCompare" type="button" aria-label="Compare selected listings" data-i18n-attr="aria-label:ui.compare.label"><span data-i18n="ui.compare">Compare <b id="cmpCount">0</b></span></button>
+      <button class="btn btn-ghost" id="btnWatch" type="button"><span data-i18n="ui.saved">Saved <b id="watchCount">0</b></span></button>
+      <button class="btn btn-ghost" id="btnCoverage" type="button"><span data-i18n="ui.coverage">Coverage</span></button>
+      <button class="btn btn-ghost" id="btnAbout" type="button"><span data-i18n="ui.about">About</span></button>
+      <button class="btn btn-ghost only-narrow" id="btnMenu" type="button" aria-label="Menu: saved plots, compare, coverage, about" aria-haspopup="dialog" data-i18n-attr="aria-label:ui.menu.label"><span>•••</span></button>
+      <button class="btn btn-ghost" id="btnLang" type="button" lang="ne" title="Switch language" data-i18n-attr="title:lang.title"><span>नेपाली</span></button>
+      <button class="btn btn-ghost" id="btnDigits" type="button" title="Digits: Devanagari or Western" data-i18n-attr="title:lang.digits.title" hidden><span>१२३</span></button>
     </nav>
   </div>
-  <div class="filters" id="filtersBar" role="group" aria-label="Filters">
-    <label class="chip"><span class="sr">District</span>
-      <select id="fDis"><option value="">All districts</option></select></label>
-    <label class="chip"><span class="sr">Price unit</span>
-      <select id="fUnit" title="Price shown and filtered per…">
+  <div class="filters" id="filtersBar" role="group" aria-label="Filters" data-i18n-attr="aria-label:ui.filters">
+    <label class="chip"><span class="sr" data-i18n="ui.district">District</span>
+      <select id="fDis"><option value="" data-i18n="ui.alldistricts">All districts</option></select></label>
+    <label class="chip"><span class="sr" data-i18n="ui.priceunit">Price unit</span>
+      <select id="fUnit" title="Price shown and filtered per…" data-i18n-attr="title:ui.priceunit.title">
         <option value="aana">per aana</option><option value="ropani">per ropani</option><option value="kattha">per kattha</option>
         <option value="dhur">per dhur</option><option value="bigha">per bigha</option><option value="sqft">per sq ft</option><option value="sqm">per m²</option>
       </select></label>
-    <span class="chip range"><span class="lbl">Price</span>
-      <input id="fPmin" inputmode="numeric" aria-label="Minimum price per unit in rupees" placeholder="min Rs">
+    <span class="chip range"><span class="lbl" data-i18n="ui.price">Price</span>
+      <input id="fPmin" inputmode="numeric" aria-label="Minimum price per unit in rupees" placeholder="min Rs" data-i18n-attr="aria-label:ui.price.min.label;placeholder:ui.price.min.ph">
       <span aria-hidden="true">–</span>
-      <input id="fPmax" inputmode="numeric" aria-label="Maximum price per unit in rupees" placeholder="max Rs"></span>
-    <span class="chip range"><span class="lbl">Area</span>
-      <input id="fAmin" inputmode="decimal" aria-label="Minimum area" placeholder="min">
+      <input id="fPmax" inputmode="numeric" aria-label="Maximum price per unit in rupees" placeholder="max Rs" data-i18n-attr="aria-label:ui.price.max.label;placeholder:ui.price.max.ph"></span>
+    <span class="chip range"><span class="lbl" data-i18n="ui.area">Area</span>
+      <input id="fAmin" inputmode="decimal" aria-label="Minimum area" placeholder="min" data-i18n-attr="aria-label:ui.area.min.label;placeholder:ui.area.min.ph">
       <span aria-hidden="true">–</span>
-      <input id="fAmax" inputmode="decimal" aria-label="Maximum area" placeholder="max">
-      <select id="fAunit" aria-label="Area unit"><option value="aana">aana</option><option value="ropani">ropani</option><option value="kattha">kattha</option><option value="dhur">dhur</option><option value="bigha">bigha</option><option value="sqm">m²</option></select></span>
-    <label class="chip"><span class="lbl">Road ≥</span><input id="fRoad" inputmode="numeric" aria-label="Minimum road width in feet" placeholder="ft"></label>
-    <label class="chip" title="By the date the portal gives the ad. Ads with no posted date are hidden when this is set."><span class="lbl">Posted</span>
-      <select id="fAge" aria-label="How recently the ad was posted"><option value="">any time</option><option value="7">last 7 days</option><option value="30">last 30 days</option><option value="90">last 3 months</option><option value="180">last 6 months</option><option value="365">last year</option></select></label>
-    <details class="more-filters" id="moreFilters"><summary class="btn btn-outline"><span>More <b id="moreCount"></b></span></summary>
+      <input id="fAmax" inputmode="decimal" aria-label="Maximum area" placeholder="max" data-i18n-attr="aria-label:ui.area.max.label;placeholder:ui.area.max.ph">
+      <select id="fAunit" aria-label="Area unit" data-i18n-attr="aria-label:ui.area.unit.label"><option value="aana">aana</option><option value="ropani">ropani</option><option value="kattha">kattha</option><option value="dhur">dhur</option><option value="bigha">bigha</option><option value="sqm">m²</option></select></span>
+    <label class="chip"><span class="lbl" data-i18n="ui.road">Road ≥</span><input id="fRoad" inputmode="numeric" aria-label="Minimum road width in feet" placeholder="ft" data-i18n-attr="aria-label:ui.road.label;placeholder:ui.road.ph"></label>
+    <label class="chip" title="By the date the portal gives the ad. Ads with no posted date are hidden when this is set." data-i18n-attr="title:ui.posted.title"><span class="lbl" data-i18n="ui.posted">Posted</span>
+      <select id="fAge" aria-label="How recently the ad was posted" data-i18n-attr="aria-label:ui.posted.label"><option value="">any time</option><option value="7">last 7 days</option><option value="30">last 30 days</option><option value="90">last 3 months</option><option value="180">last 6 months</option><option value="365">last year</option></select></label>
+    <details class="more-filters" id="moreFilters"><summary class="btn btn-outline"><span data-i18n="ui.more">More <b id="moreCount"></b></span></summary>
       <div class="more-pop">
-    <label class="chip"><span class="sr">Source</span><select id="fSrc"><option value="">All sources</option></select></label>
-      <label class="chip check"><input id="fCut" type="checkbox"><span>Price cut</span></label>
-      <label class="chip check" title="The same plot is often posted several times"><input id="fDups" type="checkbox"><span>Show duplicates</span></label>
-      <label class="chip"><span class="sr">Saved searches</span><select id="savedSel"><option value="">Saved searches…</option></select></label>
-      <button class="btn btn-ghost" id="btnSave" type="button"><span>Save search</span></button>
+    <label class="chip"><span class="sr" data-i18n="ui.source">Source</span><select id="fSrc"><option value="" data-i18n="ui.allsources">All sources</option></select></label>
+      <label class="chip check"><input id="fCut" type="checkbox"><span data-i18n="ui.pricecut">Price cut</span></label>
+      <label class="chip check" title="The same plot is often posted several times" data-i18n-attr="title:ui.dups.title"><input id="fDups" type="checkbox"><span data-i18n="ui.dups">Show duplicates</span></label>
+      <label class="chip"><span class="sr" data-i18n="ui.savedsearches">Saved searches</span><select id="savedSel"><option value="" data-i18n="ui.savedsearches.ph">Saved searches…</option></select></label>
+      <button class="btn btn-ghost" id="btnSave" type="button"><span data-i18n="ui.savesearch">Save search</span></button>
       </div></details>
-    <button class="btn btn-ghost" id="btnReset" type="button"><span>Reset</span></button>
+    <button class="btn btn-ghost" id="btnReset" type="button"><span data-i18n="ui.reset">Reset</span></button>
   </div>
 </header>
 
 <main class="split" id="main">
   <section class="list-pane" aria-labelledby="resultsHead">
-    <div class="banner welcome" id="welcome" role="region" aria-label="How to use this site" hidden>
-      <div><b>New here?</b> Land ads from several Nepali portals, each one checked and compared with similar ads.
+    <div class="banner welcome" id="welcome" role="region" aria-label="How to use this site" data-i18n-attr="aria-label:ui.welcome.label" hidden>
+      <div data-i18n-html="ui.welcome.body"><b>New here?</b> Land ads from several Nepali portals, each one checked and compared with similar ads.
         <ol><li>Tap an ad for its fact-check and what to ask before you pay.</li>
           <li><b>My finder</b> is where you say what you want: place, size, budget, road, hills. <b>Shortlist</b> then shows the plots that fit, in plain words.</li>
           <li><b>☆ Save</b> plots to keep them. Saved plots and notes stay on this device.</li></ol></div>
-      <button class="btn btn-outline" id="welcomeOk" type="button"><span>Got it</span></button>
+      <button class="btn btn-outline" id="welcomeOk" type="button"><span data-i18n="ui.gotit">Got it</span></button>
     </div>
     <div class="list-head">
       <h1 id="resultsHead" class="count" aria-live="polite">— listings</h1>
       <div class="list-tools">
-        <label class="chip"><span class="lbl">Sort</span>
-          <select id="fSort" aria-label="Sort order">
-            <option value="new">Newest posted</option><option value="price">Price: low to high</option><option value="-price">Price: high to low</option>
-            <option value="value">Cheapest vs comps</option><option value="total">Total price</option>
-            <option value="-area">Largest area</option><option value="fit" disabled>Best fit (set My finder first)</option>
+        <label class="chip"><span class="lbl" data-i18n="ui.sort">Sort</span>
+          <select id="fSort" aria-label="Sort order" data-i18n-attr="aria-label:ui.sort.label">
+            <option value="new" data-i18n="ui.sort.new">Newest posted</option><option value="price" data-i18n="ui.sort.price">Price: low to high</option><option value="-price" data-i18n="ui.sort.price_desc">Price: high to low</option>
+            <option value="value" data-i18n="ui.sort.value">Cheapest vs comps</option><option value="total" data-i18n="ui.sort.total">Total price</option>
+            <option value="-area" data-i18n="ui.sort.area">Largest area</option><option value="fit" disabled data-i18n="ui.sort.fit">Best fit (set My finder first)</option>
           </select></label>
-        <label class="chip check map-only" title="Only list what is inside the map view"><input id="fMapOnly" type="checkbox"><span>Search map area</span></label>
-        <button class="btn btn-ghost" id="btnGuide" type="button" title="What sellers ask per aana in each place, with the government rate where one is loaded"><span>Price guide</span></button>
-        <details class="export"><summary class="btn btn-ghost"><span>Export</span></summary>
-          <div class="menu"><button type="button" data-export="csv">CSV</button><button type="button" data-export="geojson">GeoJSON</button><button type="button" data-export="kml">KML</button></div>
+        <label class="chip check map-only" title="Only list what is inside the map view" data-i18n-attr="title:ui.maponly.title"><input id="fMapOnly" type="checkbox"><span data-i18n="ui.maponly">Search map area</span></label>
+        <button class="btn btn-ghost" id="btnGuide" type="button" title="What sellers ask per aana in each place, with the government rate where one is loaded" data-i18n-attr="title:ui.guide.title"><span data-i18n="ui.guide">Price guide</span></button>
+        <details class="export"><summary class="btn btn-ghost"><span data-i18n="ui.export">Export</span></summary>
+          <div class="menu"><button type="button" data-export="csv">CSV</button><button type="button" data-export="geojson">GeoJSON</button><button type="button" data-export="kml" data-i18n="ui.export.kml">KML (Google Earth)</button></div>
         </details>
       </div>
     </div>
-    <div class="active-chips" id="activeChips" aria-label="Active filters" hidden></div>
+    <div class="active-chips" id="activeChips" aria-label="Active filters" data-i18n-attr="aria-label:ui.activefilters" hidden></div>
     <p class="fresh" id="freshLine" role="status" hidden></p>
     <div class="banner" id="netBanner" role="status" hidden></div>
     <div class="banner" id="sinceBanner" role="status" hidden></div>
-    <figure class="hist" id="hist" hidden><svg id="histSvg" role="img" aria-label="Price distribution" viewBox="0 0 400 64" preserveAspectRatio="none"></svg>
+    <figure class="hist" id="hist" hidden><svg id="histSvg" role="img" aria-label="Price distribution" data-i18n-attr="aria-label:ui.hist.label" viewBox="0 0 400 64" preserveAspectRatio="none"></svg>
       <figcaption id="histCap" class="foot"></figcaption></figure>
-    <ol id="results" class="cards" tabindex="-1"><li class="empty" role="status">Loading the ads…</li></ol>
-    <div class="more"><button class="btn btn-outline" id="btnMore" type="button" hidden><span>Show more</span></button></div>
+    <ol id="results" class="cards" tabindex="-1"><li class="empty" role="status" data-i18n="ui.loading">Loading the ads…</li></ol>
+    <div class="more"><button class="btn btn-outline" id="btnMore" type="button" hidden><span data-i18n="ui.showmore">Show more</span></button></div>
     <footer class="foot" id="foot"></footer>
   </section>
 
-  <section class="map-pane" aria-label="Map of listings">
-    <div id="map" role="application" aria-label="Interactive map. Use the list for keyboard access to every listing."></div>
-    <div class="layers" role="group" aria-label="Map layers">
-      <label class="chip check"><input id="lyL" type="checkbox" checked><span>Listings</span></label>
-      <label class="chip check"><input id="lyC" type="checkbox"><span>Infrastructure</span></label>
-      <label class="chip check"><input id="lyB" type="checkbox"><span>Districts &amp; coverage</span></label>
+  <section class="map-pane" aria-label="Map of listings" data-i18n-attr="aria-label:ui.map.label">
+    <div id="map" role="application" aria-label="Interactive map. Use the list for keyboard access to every listing." data-i18n-attr="aria-label:ui.map.aria"></div>
+    <div class="layers" role="group" aria-label="Map layers" data-i18n-attr="aria-label:ui.layers.label">
+      <label class="chip check"><input id="lyL" type="checkbox" checked><span data-i18n="ui.layer.listings">Listings</span></label>
+      <label class="chip check"><input id="lyC" type="checkbox"><span data-i18n="ui.layer.infra">Infrastructure</span></label>
+      <label class="chip check"><input id="lyB" type="checkbox"><span data-i18n="ui.layer.districts">Districts &amp; coverage</span></label>
     </div>
-    <div class="legend" aria-hidden="false"><span class="sw sw-cheap"></span> cheap vs comps <span class="sw sw-mid"></span> mid <span class="sw sw-dear"></span> dear <span class="sw sw-none"></span> no comps<div class="lg-row"><span class="sw sw-exact"></span>a spot on the map <span class="sw sw-area"></span>area only: the centre of its municipality</div></div>
+    <div class="legend" aria-hidden="false" data-i18n-html="ui.legend"><span class="sw sw-cheap"></span> cheap vs comps <span class="sw sw-mid"></span> mid <span class="sw sw-dear"></span> dear <span class="sw sw-none"></span> no comps<div class="lg-row"><span class="sw sw-exact"></span>a spot on the map <span class="sw sw-area"></span>area only: the centre of its municipality</div></div>
   </section>
 </main>
 
-<section class="picks" id="picks" aria-label="Shortlist" hidden><div class="pk-wrap" id="pkBody"></div></section>
+<section class="picks" id="picks" aria-label="Shortlist" data-i18n-attr="aria-label:ui.shortlist" hidden><div class="pk-wrap" id="pkBody"></div></section>
 
-<nav class="tabbar" aria-label="View">
-  <button class="btn btn-outline on" id="tabList" type="button"><span>List</span></button>
-  <button class="btn btn-outline" id="tabMap" type="button"><span>Map</span></button>
-  <button class="btn btn-outline" id="tabPicks" type="button"><span>Shortlist</span></button>
+<nav class="tabbar" aria-label="View" data-i18n-attr="aria-label:ui.view">
+  <button class="btn btn-outline on" id="tabList" type="button"><span data-i18n="ui.tab.list">List</span></button>
+  <button class="btn btn-outline" id="tabMap" type="button"><span data-i18n="ui.tab.map">Map</span></button>
+  <button class="btn btn-outline" id="tabPicks" type="button"><span data-i18n="ui.shortlist">Shortlist</span></button>
 </nav>
 
 <aside class="finder" id="finder" aria-labelledby="fTitle" hidden>
-  <div class="win-bar"><button class="x back" id="fBack" type="button" aria-label="Back"><span aria-hidden="true">←</span> Back</button><span class="win-title" id="fTitle">Your criteria</span>
-    <button class="x" id="fClose" type="button" aria-label="Close my finder">✕</button></div>
+  <div class="win-bar"><button class="x back" id="fBack" type="button" aria-label="Back" data-i18n-attr="aria-label:ui.back" data-i18n="ui.back"><span aria-hidden="true">←</span> Back</button><span class="win-title" id="fTitle" data-i18n="ui.criteria">Your criteria</span>
+    <button class="x" id="fClose" type="button" aria-label="Close my finder" data-i18n-attr="aria-label:ui.finder.close">✕</button></div>
   <div class="finder-body" id="fBody"></div>
 </aside>
 
 <aside class="drawer" id="drawer" role="dialog" aria-modal="false" aria-labelledby="dTitle" hidden>
-  <div class="win-bar"><button class="x back" id="dBack" type="button" aria-label="Back"><span aria-hidden="true">←</span> Back</button><span class="win-title">Plot details <small id="dPos" class="foot"></small></span>
-    <button class="x" id="dPrev" type="button" aria-label="Previous listing (K)" title="Previous listing (K)">‹</button><button class="x" id="dNext" type="button" aria-label="Next listing (J)" title="Next listing (J)">›</button>
-    <button class="x" id="dClose" type="button" aria-label="Close details">✕</button></div>
+  <div class="win-bar"><button class="x back" id="dBack" type="button" aria-label="Back" data-i18n-attr="aria-label:ui.back" data-i18n="ui.back"><span aria-hidden="true">←</span> Back</button><span class="win-title" data-i18n="ui.plot.details">Plot details <small id="dPos" class="foot"></small></span>
+    <button class="x" id="dPrev" type="button" aria-label="Previous listing (K)" title="Previous listing (K)" data-i18n-attr="aria-label:ui.prev;title:ui.prev">‹</button><button class="x" id="dNext" type="button" aria-label="Next listing (J)" title="Next listing (J)" data-i18n-attr="aria-label:ui.next;title:ui.next">›</button>
+    <button class="x" id="dClose" type="button" aria-label="Close details" data-i18n-attr="aria-label:ui.plot.close">✕</button></div>
   <div class="drawer-body" id="dBody"></div>
 </aside>
 
 <dialog class="modal" id="modal"><div class="win-bar"><span class="win-title" id="mTitle"></span>
-  <button class="x" id="mClose" type="button" aria-label="Close">✕</button></div><div class="modal-body" id="mBody"></div></dialog>
+  <button class="x" id="mClose" type="button" aria-label="Close" data-i18n-attr="aria-label:ui.close">✕</button></div><div class="modal-body" id="mBody"></div></dialog>
 
 <script src="data.js"></script>
+<script src="messages.js"></script>
 <script src="lib.js"></script>
 <script src="finder.js"></script>
 <script src="picks.js"></script>
