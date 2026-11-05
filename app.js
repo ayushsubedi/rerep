@@ -411,6 +411,10 @@
     loadDetail([id]).then(() => { if (S.sel === id) renderDrawer(id, fromMap); },
       () => { if (S.sel === id) $("dBody").insertAdjacentHTML("beforeend", '<p class="empty">' + L.esc(L.t("drawer.loaderr")) + "</p>"); });
   }
+  /** A server sentence in the chosen language, HTML-escaped, with its 'JUDGEMENT CALLS' marker shown as the translated label (the drawer, the compare table and the print window all use it:
+   *  the compare table once showed the English marker inside a Nepali sentence). */
+  const judged = (m) => L.esc(L.msg(m)).replace(/JUDGEMENT CALLS?/g, '<span class="judge">' + L.esc(L.t("drawer.judge")) + "</span>");
+
   function renderDrawer(id, fromMap) {
     const l = byId.get(id), dt = detailOf(id);
     document.querySelectorAll(".card.sel").forEach((c) => c.classList.remove("sel"));
@@ -420,7 +424,7 @@
       if (j >= S.shown) { S.shown = Math.min(visible.length, j + 1 + PAGE); renderList(); card = cardEl(id); }
     }
     if (card) { card.classList.add("sel"); if (fromMap) card.scrollIntoView({ block: "center" }); }
-    const ok = dt.x.ok.map((f) => '<li><b>' + L.esc(L.factor(f.f)) + "</b><br>" + L.esc(L.msg(f.d)).replace(/JUDGEMENT CALLS?/g, '<span class="judge">' + L.esc(L.t("drawer.judge")) + "</span>") +
+    const ok = dt.x.ok.map((f) => '<li><b>' + L.esc(L.factor(f.f)) + "</b><br>" + judged(f.d) +
       (f.s ? '<br><a class="src" href="' + L.esc(L.safeUrl(f.s)) + '" target="_blank" rel="noopener noreferrer">' + L.esc(L.t("drawer.src")) + "</a>" : "") + "</li>").join("");
     const no = dt.x.no.map((m) => '<li class="no"><b>' + L.esc(L.factor(m.f)) + "</b> " + L.esc(L.t("drawer.missing")) + "<br>" + L.esc(L.msg(m.w)) + "</li>").join("");
     const per = ["aana", "ropani", "sqft", "sqm"].map((u) => "<dt>" + L.esc(L.t("ui.per", { unit: UNIT_LABEL[u] })) + "</dt><dd>" + L.esc(L.fmtMoney(L.perUnit(l.p, u, T))) + "</dd>").join("");
@@ -631,7 +635,7 @@
     const ls = S.cmp.map((i) => byId.get(i)).filter(Boolean);
     if (ls.length < 2) return '<p class="empty">' + L.esc(L.t("cmp.empty")) + "</p>";
     const row = (label, fn) => "<tr><th scope=\"row\">" + label + "</th>" + ls.map((l) => "<td>" + fn(l) + "</td>").join("") + "</tr>";
-    const factor = (l, name) => { const x = detailOf(l.id).x, f = x.ok.find((q) => q.f === name); return f ? L.esc(L.msg(f.d)) : (x.no.find((q) => q.f === name) ? "<i>" + L.esc(L.t("cmp.missing")) + "</i>" : "–"); };
+    const factor = (l, name) => { const x = detailOf(l.id).x, f = x.ok.find((q) => q.f === name); return f ? judged(f.d) : (x.no.find((q) => q.f === name) ? "<i>" + L.esc(L.t("cmp.missing")) + "</i>" : "–"); };
     return '<table class="cmp-table"><thead><tr><th></th>' + ls.map((l) => '<th scope="col"><button class="btn btn-ghost" type="button" data-open="' + l.id + '"><span>' + L.esc(l.t.slice(0, 34)) + "</span></button></th>").join("") + "</tr></thead><tbody>" +
       row(L.esc(L.t("cmp.row.price", { unit: UNIT_LABEL[S.f.unit] })), (l) => L.esc(priceText(l))) + row(L.esc(L.t("kv.total")), (l) => L.esc(l.tot ? L.fmtMoney(l.tot) : L.t("kv.na"))) +
       row(L.esc(L.t("kv.area")), (l) => L.esc(areaText(l))) + row(L.esc(L.t("cmp.row.road")), (l) => (l.road ? L.esc(L.t("cmp.ft", { n: l.road })) : "–")) + row(L.esc(L.t("kv.place")), (l) => L.esc(placeText(l))) +
@@ -643,7 +647,7 @@
   function shortlistHTML(ids) {
     const rows = ids.map((id) => {
       const l = byId.get(id), dt = detailOf(id), note = store.get("jagga.note." + id, "");
-      const ok = dt.x.ok.map((f) => "<li><b>" + L.esc(L.factor(f.f)) + "</b>: " + L.esc(L.msg(f.d)) + "</li>").join("");
+      const ok = dt.x.ok.map((f) => "<li><b>" + L.esc(L.factor(f.f)) + "</b>: " + judged(f.d) + "</li>").join("");
       const no = dt.x.no.map((m) => "<li class=\"no\"><b>" + L.esc(L.factor(m.f)) + "</b>: " + L.esc(L.t("print.no", { w: L.msg(m.w) })) + "</li>").join("");
       return "<section><h2>" + L.esc(l.t) + "</h2><p class=\"big\">" + L.esc(priceText(l)) + (l.p != null ? " /" + UNIT_LABEL[S.f.unit] : "") + (l.tot && l.p != null ? L.esc(L.t("print.totaltag", { m: L.fmtMoney(l.tot) })) : "") + "</p>" +
         "<p>" + L.esc(areaText(l)) + " · " + L.esc(placeText(l)) + (l.road ? " · " + L.esc(L.t("card.road", { n: l.road })) : "") + (l.po ? L.esc(L.t("print.dated", { d: L.digits(l.po) })) : "") + "</p>" +

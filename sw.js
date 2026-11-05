@@ -2,10 +2,15 @@
  * device and the site opens offline. `jagga site` fills in BUILD and SHELL (every shipped file) when it writes the site, so the cache name changes with each
  * build (old caches are dropped) and the file list can never go stale. Map tiles are cross-origin and are not cached: offline, the list works and the map
  * is blank. Data files go network-first (a new build shows at once; on a slow link the saved copy wins after 4 s), the rest cache-first. */
-const BUILD = "2026-11-05T06:29", CACHE = "jagga-" + BUILD, SHELL = ["./", "app.js", "data.js", "finder.js", "fonts/LICENSE-FONTS.md", "fonts/bricolage-grotesque-500-800-latin.woff2", "fonts/ibm-plex-mono-400-latin.woff2", "fonts/ibm-plex-mono-500-latin.woff2", "fonts/ibm-plex-sans-var-latin.woff2", "fonts/noto-sans-devanagari-var-devanagari.woff2", "guide.js", "icon-192.png", "icon-512.png", "icon-maskable-512.png", "index.html", "lib.js", "manifest.webmanifest", "messages.js", "picks.js", "places.js", "style.css", "vendor/leaflet/LICENSE", "vendor/leaflet/images/layers-2x.png", "vendor/leaflet/images/layers.png", "vendor/leaflet/images/marker-icon.png", "vendor/leaflet/leaflet.css", "vendor/leaflet/leaflet.js"];
+const BUILD = "2026-11-05T13:39", CACHE = "jagga-" + BUILD, SHELL = ["./", "app.js", "data.js", "finder.js", "fonts/LICENSE-FONTS.md", "fonts/bricolage-grotesque-500-800-latin.woff2", "fonts/ibm-plex-mono-400-latin.woff2", "fonts/ibm-plex-mono-500-latin.woff2", "fonts/ibm-plex-sans-var-latin.woff2", "fonts/noto-sans-devanagari-var-devanagari.woff2", "guide.js", "icon-192.png", "icon-512.png", "icon-maskable-512.png", "index.html", "lib.js", "manifest.webmanifest", "messages.js", "picks.js", "places.js", "style.css", "vendor/leaflet/LICENSE", "vendor/leaflet/images/layers-2x.png", "vendor/leaflet/images/layers.png", "vendor/leaflet/images/marker-icon.png", "vendor/leaflet/leaflet.css", "vendor/leaflet/leaflet.js"];
 const DATA = /\/(data\.js|places\.js|guide\.js|d\/[A-Za-z0-9]+\.js)$/;
 
-self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
+/** Fill the cache from the NETWORK, never from the browser's own HTTP cache. GitHub Pages lets a browser reuse a file for 10 minutes, so a visitor who had loaded the site just before a publish used to get the
+ *  OLD files stored as the new build's shell, and reloading never fixed it (old scripts on new data: `[object Object]` for every sentence the server writes). Anything that is not a plain answer from this
+ *  site (a sign-in page, an error) fails the install, so the copy that works keeps running. All-or-nothing, like addAll. */
+const precache = (c) => Promise.all(SHELL.map((u) => fetch(new Request(u, { cache: "reload" })).then((res) => { if (!clean(res)) throw new Error("not cacheable: " + u); return c.put(u, res); })));
+
+self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then(precache).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith("jagga-") && k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
@@ -17,7 +22,8 @@ const clean = (res) => res && res.ok && res.type === "basic" && !res.redirected;
 async function networkFirst(req) {
   const cache = await caches.open(CACHE), hit = await cache.match(req);
   try {
-    const res = await (hit ? Promise.race([fetch(req), new Promise((_, rej) => setTimeout(rej, 4000))]) : fetch(req));
+    const live = fetch(req, { cache: "no-cache" });                       // ask the server whether the file changed (a 304 is cheap): the browser's 10-minute reuse must not show last build's data
+    const res = await (hit ? Promise.race([live, new Promise((_, rej) => setTimeout(rej, 4000))]) : live);
     if (clean(res)) { cache.put(req, res.clone()); return res; }
     return hit || res;                                                    // not a clean answer (a login page, a server error): the saved copy is better than that
   } catch (err) { if (hit) return hit; throw err; }
